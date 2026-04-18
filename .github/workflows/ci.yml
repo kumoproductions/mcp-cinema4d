@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: lint + typecheck + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install uv (for ruff via uvx)
+        uses: astral-sh/setup-uv@v6
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint (oxlint)
+        run: npm run lint
+
+      - name: Format check (oxfmt)
+        run: npm run format:check
+
+      - name: Lint (ruff)
+        run: npm run lint:py
+
+      - name: Format check (ruff)
+        run: npm run format:py:check
+
+      - name: Build
+        run: npm run build
+
+      - name: Tool docs drift
+        run: node scripts/generate-tools-doc.mjs --check
+
+      # LF enforcement: fail if any tracked text file contains CR. Uses the
+      # .gitattributes normalization rather than file-by-file grep so new file
+      # types stay covered automatically.
+      - name: CRLF guard
+        run: |
+          set -eu
+          git add --renormalize .
+          if ! git diff --quiet; then
+            echo "::error::CRLF detected in tracked files. Run 'git add --renormalize .' locally."
+            git diff --stat
+            exit 1
+          fi

@@ -1,0 +1,38 @@
+[tool.ruff]
+# Python side targets Cinema 4D's embedded interpreter (Python 3.11 on C4D 2026).
+target-version = "py311"
+line-length = 100
+src = ["plugin"]
+extend-exclude = ["dist", "node_modules"]
+# C4D plugin entry files use the .pyp extension; treat them as Python.
+extend-include = ["*.pyp"]
+
+[tool.ruff.lint]
+select = [
+  "E", # pycodestyle errors
+  "F", # pyflakes
+  "W", # pycodestyle warnings
+  "I", # isort
+  "B", # flake8-bugbear
+  "UP", # pyupgrade
+  "C4", # flake8-comprehensions
+  "SIM", # flake8-simplify
+  "RUF", # ruff-specific
+]
+ignore = [
+  # The C4D API surface throws BaseException subclasses frequently; broad
+  # except is often the right call when we want to wrap errors into JSON.
+  "BLE001",
+  # Allow Pythonic f-string flexibility in logs.
+  "G004",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Plugin entrypoint has top-level side effects by design.
+"plugin/cinema4d_mcp_bridge/cinema4d_mcp_bridge.pyp" = ["E402", "F401"]
+
+[tool.ruff.format]
+# Match oxfmt/editorconfig defaults.
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

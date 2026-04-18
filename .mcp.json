@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "cinema4d": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["dist/index.js"],
+      "env": {
+        "C4D_MCP_HOST": "127.0.0.1",
+        "C4D_MCP_PORT": "18710"
+      }
+    }
+  }
+}

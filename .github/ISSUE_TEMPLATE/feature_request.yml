@@ -1,0 +1,27 @@
+name: Feature request
+description: Ask for a new tool, parameter, or workflow to be supported.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the workflow or capability you're missing.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed tool / API
+      description: |
+        If you already know what the MCP tool should look like, sketch it.
+        Example: `create_camera(name, position?, focal_length?, target?)`
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've tried
+      description: e.g. did you use `exec_python` as a workaround?
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
