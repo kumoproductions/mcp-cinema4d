@@ -4,7 +4,7 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 Every CRUD tool identifies entities by a typed `handle` object — see [Entity handles](../README.md#entity-handles).
 
-55 tools across 16 groups.
+56 tools across 16 groups.
 
 ## Basics
 
@@ -40,7 +40,7 @@ Typed create / read / update / delete across every C4D entity kind.
 | `set_params`    | Atomically write parameter values (wrapped in one undo).                                                  |
 | `get_container` | Dump the raw BaseContainer of a C4D entity (including hidden keys that don't show up in `describe`, e.g.  |
 | `dump_shader`   | Recursively dump a shader (resolved from a handle) into JSON.                                             |
-| `create_entity` | Unified constructor for object / tag / material / shader.                                                 |
+| `create_entity` | Unified constructor for object / tag / material / shader / video_post.                                    |
 | `remove_entity` | Delete the resolved entity (wrapped in an undo step).                                                     |
 | `set_keyframe`  | Create or update a single keyframe on a resolved entity's parameter.                                      |
 
@@ -54,6 +54,7 @@ Document state, frame range / fps / camera, RenderData + Take creation, scene me
 | `import_scene`       | Merge an external file (abc/fbx/obj/c4d/etc.) into the active document via MergeDocument.                                                                                                     |
 | `create_render_data` | Create (or update-if-exists) a RenderData with resolution / renderer / fps / frame range in one call.                                                                                         |
 | `create_take`        | Create or update a Take (AddTake + SetCamera + SetRenderData + SetChecked) in one call.                                                                                                       |
+| `take_override`      | Write per-Take parameter overrides onto a target node (object / tag / material / render_data / video_post / shader).                                                                          |
 | `sample_transform`   | Evaluate the scene at each requested frame and return the object's transform.                                                                                                                 |
 | `get_document_state` | One-shot reader for the active document's key fields: fps, min/max and loop frame range, current frame, document name/path, and canonical handles for the active camera / take / render data. |
 
@@ -73,7 +74,7 @@ Reparent, reorder, clone.
 | Tool           | Description                                                                                                  |
 | -------------- | ------------------------------------------------------------------------------------------------------------ |
 | `move_entity`  | Reparent an object under a new parent, promote it to the document root, or reorder it relative to a sibling. |
-| `clone_entity` | Duplicate an object / tag / material / shader via GetClone.                                                  |
+| `clone_entity` | Duplicate an entity.                                                                                         |
 
 ## Modeling
 
