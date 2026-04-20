@@ -56,6 +56,7 @@ import { setMeshSelectionTool } from "./set-mesh-selection.js";
 import { setParamsTool } from "./set-params.js";
 import { setSelectionTool } from "./set-selection.js";
 import { setTransformTool } from "./set-transform.js";
+import { takeOverrideTool } from "./take-override.js";
 import { undoTool } from "./undo.js";
 
 import type { ToolGroup } from "./define-tool.js";
@@ -96,6 +97,7 @@ export const ALL_TOOLS: AnyTool[] = [
   importSceneTool,
   createRenderDataTool,
   createTakeTool,
+  takeOverrideTool,
   sampleTransformTool,
   // Selection
   getSelectionTool,

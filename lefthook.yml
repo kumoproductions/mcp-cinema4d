@@ -14,7 +14,7 @@ pre-commit:
     - name: oxfmt
       glob: "*.{ts,tsx,js,mjs,cjs,json,jsonc,md,yml,yaml}"
       stage_fixed: true
-      run: npx oxfmt {staged_files}
+      run: npx oxfmt --no-error-on-unmatched-pattern {staged_files}
 
     - name: ruff-lint
       glob: "*.{py,pyp}"

@@ -99,6 +99,7 @@ from .shot_setup import (
     handle_import_scene,
     handle_sample_transform,
     handle_set_document,
+    handle_take_override,
 )
 from .tags import handle_assign_material
 from .transform import handle_set_transform
@@ -133,6 +134,7 @@ HANDLERS = {
     "import_scene": handle_import_scene,
     "create_render_data": handle_create_render_data,
     "create_take": handle_create_take,
+    "take_override": handle_take_override,
     "sample_transform": handle_sample_transform,
     "get_selection": handle_get_selection,
     "set_selection": handle_set_selection,

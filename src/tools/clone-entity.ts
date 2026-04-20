@@ -7,14 +7,14 @@ export const cloneEntityTool = defineTool({
   group: "hierarchy",
   title: "Clone Entity",
   description:
-    "Duplicate an object / tag / material / shader via GetClone. Objects default to dropping next to the source; pass `parent` to place the clone under a specific container. Tags and shaders require `parent` (the owner). Returns a handle to the new entity.",
+    "Duplicate an entity. Supports object / tag / material / shader (via GetClone + parent insert), render_data (doc.InsertRenderData — copies VideoPosts too), video_post (rd.InsertVideoPost), and take (TakeData.AddTake, copying existing overrides). Objects default to dropping next to the source; pass `parent` to place the clone elsewhere. Returns a handle to the new entity.",
   inputShape: {
     handle: handleSchema.describe("Source entity to clone."),
     name: z.string().optional().describe("Optional name for the clone."),
     parent: handleSchema
       .optional()
       .describe(
-        "For objects: destination parent (defaults to source's sibling). For tags: required owner object. For shaders: required owner.",
+        "For objects: destination parent (defaults to source's sibling). For tags: required owner object. For shaders: required owner. For video_post: target render_data (defaults to source's host). For take: parent take as handle (defaults to source's parent).",
       ),
   },
   async handler(args, client) {

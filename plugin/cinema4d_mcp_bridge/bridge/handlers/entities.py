@@ -474,8 +474,8 @@ def handle_create_entity(params: dict[str, Any]) -> dict[str, Any]:
     position = params.get("position")
     slots = params.get("slots") or []
 
-    if kind not in ("object", "tag", "material", "shader"):
-        raise ValueError(f"kind must be object/tag/material/shader, got {kind!r}")
+    if kind not in ("object", "tag", "material", "shader", "video_post"):
+        raise ValueError(f"kind must be object/tag/material/shader/video_post, got {kind!r}")
     if type_raw is None:
         raise ValueError("type_id required")
     type_id = resolve_type_id(type_raw)
@@ -540,6 +540,28 @@ def handle_create_entity(params: dict[str, Any]) -> dict[str, Any]:
             doc.InsertMaterial(mat)
             doc.AddUndo(c4d.UNDOTYPE_NEW, mat)
             handle = {"kind": "material", "name": mat.GetName()}
+
+        elif kind == "video_post":
+            if not parent_h:
+                raise ValueError("parent handle (render_data) required for video_post")
+            if not isinstance(parent_h, dict) or parent_h.get("kind") != "render_data":
+                raise ValueError("video_post parent must be a render_data handle")
+            rd = _resolve_handle(parent_h)
+            if rd is None:
+                raise ValueError(f"render_data not resolved: {parent_h}")
+            vp = documents.BaseVideoPost(type_id)
+            if vp is None:
+                raise RuntimeError(f"BaseVideoPost({type_id}) returned None")
+            if name:
+                vp.SetName(name)
+            _apply_params(vp, values)
+            rd.InsertVideoPost(vp)
+            doc.AddUndo(c4d.UNDOTYPE_NEW, vp)
+            handle = {
+                "kind": "video_post",
+                "render_data": rd.GetName(),
+                "type_id": vp.GetType(),
+            }
 
         else:  # shader
             if not parent_h:

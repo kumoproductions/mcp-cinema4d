@@ -22,6 +22,8 @@ from ._helpers import (
     _find_object,
     _find_render_data,
     _find_take,
+    _param_dtype,
+    _path_to_desc_id,
     _require_abs_path,
     _resolve_handle,
     _summary,
@@ -272,6 +274,157 @@ def handle_create_take(params: dict[str, Any]) -> dict[str, Any]:
         "camera": linked_cam.GetName() if linked_cam else None,
         "render_data": linked_rd.GetName() if linked_rd else None,
         "checked": bool(take.IsChecked()),
+    }
+
+
+def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
+    """Write per-Take parameter overrides onto a target node.
+
+    A Take override records that a specific parameter on a specific node
+    differs in this take vs. its parent. The C4D flow is:
+      override = take.FindOverride(td, node) or take.OverrideNode(td, node)
+      override.UpdateSceneNode(td, descid)    # register this param
+      override[descid] = value                # write the override value
+
+    params:
+      take:    take name (required)
+      target:  handle of the node to override (object / tag / material /
+               render_data / video_post / shader). Required.
+      values:  list of {path, value} — same path syntax as set_params.
+               (paths go through _path_to_desc_id, so int / [int,...] /
+               vector sub-keys 'x'/'y'/'z' all work.)
+      clear:   list of paths to drop from the override (optional)
+      remove_all: bool — drop the entire override for this node
+      params:  shorthand {pid: value} for flat writes (applied after `values`)
+
+    Returns:
+      {applied:[{path,value}], errors:[{path,error}],
+       cleared:[path,...], removed_all:bool, take, target}
+    """
+    take_name = params.get("take")
+    if not take_name or not isinstance(take_name, str):
+        raise ValueError("'take' required")
+    target_h = params.get("target")
+    if not target_h:
+        raise ValueError("'target' handle required")
+
+    values = params.get("values") or []
+    clear_paths = params.get("clear") or []
+    remove_all = bool(params.get("remove_all", False))
+    extra = params.get("params") or {}
+
+    if not values and not clear_paths and not remove_all and not extra:
+        raise ValueError("nothing to do: provide values / clear / remove_all / params")
+
+    doc = documents.GetActiveDocument()
+    if doc is None:
+        raise RuntimeError("no active document")
+    td = doc.GetTakeData()
+    if td is None:
+        raise RuntimeError("take data unavailable")
+
+    take = _find_take(take_name)
+    if take is None:
+        raise ValueError(f"take not found: {take_name}")
+    if take.IsMain():
+        # Main take cannot hold overrides — guide the caller to set_params.
+        raise ValueError("cannot override on the Main take; use set_params instead")
+
+    target = _resolve_handle(target_h)
+    if target is None:
+        raise ValueError(f"target not resolved: {target_h}")
+
+    applied: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    cleared: list[Any] = []
+    removed_all = False
+
+    doc.StartUndo()
+    try:
+        doc.AddUndo(c4d.UNDOTYPE_CHANGE, take)
+
+        if remove_all:
+            # Removing the entire override node is SDK-version dependent. Try
+            # the known APIs in order; fall back to a no-op if neither exists.
+            if hasattr(take, "RemoveOverride"):
+                take.RemoveOverride(td, target)
+                removed_all = True
+            elif hasattr(take, "KillOverrides"):
+                # KillOverrides drops ALL overrides on this take, not just for
+                # this target. We only call it when the caller passes no target
+                # to protect sibling overrides — the API simply can't do a
+                # per-target kill on this C4D build.
+                errors.append(
+                    {
+                        "path": None,
+                        "error": "SDK exposes only KillOverrides (kills all); refusing "
+                        "to cascade. Use 'clear' on specific paths instead.",
+                    }
+                )
+            else:
+                errors.append(
+                    {
+                        "path": None,
+                        "error": "this C4D build has no RemoveOverride API",
+                    }
+                )
+        else:
+            override = take.FindOverride(td, target)
+            if override is None:
+                override = take.OverrideNode(td, target)
+            if override is None:
+                raise RuntimeError("OverrideNode returned None")
+
+            # Apply value overrides.
+            all_values = list(values)
+            for pid, val in extra.items():
+                all_values.append({"path": int(pid), "value": val})
+
+            for entry in all_values:
+                if not isinstance(entry, dict) or "path" not in entry or "value" not in entry:
+                    errors.append({"path": entry, "error": "each entry needs {path, value}"})
+                    continue
+                try:
+                    descid, norm = _path_to_desc_id(target, entry["path"])
+                    override.UpdateSceneNode(td, descid)
+                    value = entry["value"]
+                    # Coerce 3-float lists into c4d.Vector for vector-typed params.
+                    if (
+                        isinstance(value, (list, tuple))
+                        and len(value) == 3
+                        and all(
+                            isinstance(v, (int, float)) and not isinstance(v, bool) for v in value
+                        )
+                    ):
+                        dtype = _param_dtype(target, descid[0].id)
+                        if dtype == c4d.DTYPE_VECTOR:
+                            value = c4d.Vector(float(value[0]), float(value[1]), float(value[2]))
+                    override[descid] = value
+                    applied.append({"path": norm, "value": entry["value"]})
+                except Exception as exc:
+                    errors.append(
+                        {"path": entry.get("path"), "error": f"{type(exc).__name__}: {exc}"}
+                    )
+
+            # Clear requested paths (mark unoverridden).
+            for p in clear_paths:
+                try:
+                    descid, norm = _path_to_desc_id(target, p)
+                    override.UpdateSceneNode(td, descid)
+                    cleared.append(norm)
+                except Exception as exc:
+                    errors.append({"path": p, "error": f"{type(exc).__name__}: {exc}"})
+    finally:
+        doc.EndUndo()
+    c4d.EventAdd()
+
+    return {
+        "take": take.GetName(),
+        "target": target_h,
+        "applied": applied,
+        "errors": errors,
+        "cleared": cleared,
+        "removed_all": removed_all,
     }
 
 

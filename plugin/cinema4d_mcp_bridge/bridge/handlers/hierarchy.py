@@ -17,6 +17,8 @@ import c4d
 from c4d import documents
 
 from ._helpers import (
+    _find_render_data,
+    _find_take,
     _object_path,
     _resolve_handle,
     _summary,
@@ -99,13 +101,22 @@ def handle_move_entity(params: dict[str, Any]) -> dict[str, Any]:
 
 
 def handle_clone_entity(params: dict[str, Any]) -> dict[str, Any]:
-    """Duplicate an object / tag / material / shader via GetClone.
+    """Duplicate an entity.
+
+    Supported kinds:
+      object / tag / material / shader — via GetClone + parent insert
+      render_data                      — via GetClone + doc.InsertRenderData
+      video_post                       — via GetClone + rd.InsertVideoPost
+      take                             — via TakeData.AddTake(cloneFrom=src),
+                                         which also copies existing overrides
 
     params:
       handle:  source entity
       name:    optional new name for the clone
-      parent:  optional parent handle (for objects = InsertUnder; for
-               tags = owner object; for shaders = owner; ignored for materials)
+      parent:  object clone: destination parent (defaults to source sibling)
+               tag / shader clone: required owner
+               video_post clone: optional target render_data (defaults to source's)
+               take clone: optional parent take (defaults to source's parent)
     """
     h = params.get("handle")
     if not h:
@@ -121,6 +132,40 @@ def handle_clone_entity(params: dict[str, Any]) -> dict[str, Any]:
     new_name = params.get("name")
     parent_h = params.get("parent")
 
+    src_kind = h.get("kind") if isinstance(h, dict) else None
+
+    # Take cloning uses TakeData.AddTake(cloneFrom=...) — GetClone alone would
+    # produce a detached BaseTake without override wiring.
+    if src_kind == "take" or isinstance(src, c4d.modules.takesystem.BaseTake):
+        td = doc.GetTakeData()
+        if td is None:
+            raise RuntimeError("take data unavailable")
+        if parent_h:
+            if isinstance(parent_h, dict) and parent_h.get("kind") == "take":
+                parent_take = _find_take(parent_h["name"])
+            elif isinstance(parent_h, str):
+                parent_take = _find_take(parent_h)
+            else:
+                raise ValueError("take clone parent must be a take handle or name string")
+            if parent_take is None:
+                raise ValueError(f"parent take not found: {parent_h}")
+        else:
+            parent_take = src.GetUp() or td.GetMainTake()
+        clone_name = new_name if isinstance(new_name, str) and new_name else f"{src.GetName()}_copy"
+        doc.StartUndo()
+        try:
+            new_take = td.AddTake(clone_name, parent_take, src)
+            if new_take is None:
+                raise RuntimeError(f"AddTake failed for {clone_name!r}")
+            doc.AddUndo(c4d.UNDOTYPE_NEW, new_take)
+        finally:
+            doc.EndUndo()
+        c4d.EventAdd()
+        return {
+            "handle": {"kind": "take", "name": new_take.GetName()},
+            "summary": _summary(new_take),
+        }
+
     clone = src.GetClone()
     if clone is None:
         raise RuntimeError("GetClone returned None")
@@ -129,7 +174,37 @@ def handle_clone_entity(params: dict[str, Any]) -> dict[str, Any]:
 
     doc.StartUndo()
     try:
-        if isinstance(clone, c4d.BaseObject):
+        if src_kind == "render_data" or isinstance(clone, c4d.documents.RenderData):
+            doc.InsertRenderData(clone)
+            doc.AddUndo(c4d.UNDOTYPE_NEW, clone)
+            handle = {"kind": "render_data", "name": clone.GetName()}
+        elif src_kind == "video_post" or isinstance(clone, c4d.documents.BaseVideoPost):
+            # video_post clone lands in the requested render_data, defaulting
+            # to the source's host so "duplicate this effect" is one call.
+            if parent_h:
+                if isinstance(parent_h, dict) and parent_h.get("kind") == "render_data":
+                    dst_rd = _find_render_data(parent_h["name"])
+                elif isinstance(parent_h, str):
+                    dst_rd = _find_render_data(parent_h)
+                else:
+                    raise ValueError("video_post parent must be render_data handle or name")
+                if dst_rd is None:
+                    raise ValueError(f"render_data not found: {parent_h}")
+            else:
+                # Default: same render_data as source. We recover it from h.
+                dst_rd = None
+                if isinstance(h, dict) and h.get("render_data"):
+                    dst_rd = _find_render_data(h["render_data"])
+                if dst_rd is None:
+                    raise ValueError("could not infer destination render_data; provide 'parent'")
+            dst_rd.InsertVideoPost(clone)
+            doc.AddUndo(c4d.UNDOTYPE_NEW, clone)
+            handle = {
+                "kind": "video_post",
+                "render_data": dst_rd.GetName(),
+                "type_id": clone.GetType(),
+            }
+        elif isinstance(clone, c4d.BaseObject):
             if parent_h:
                 parent = _resolve_object_or_raise(parent_h, "parent")
                 clone.InsertUnder(parent)
