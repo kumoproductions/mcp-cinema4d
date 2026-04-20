@@ -33,3 +33,12 @@ pre-commit:
       glob: "*.{ts,tsx,js,mjs,cjs,json,jsonc,md,yml,yaml,py,pyp}"
       stage_fixed: true
       run: perl scripts/fix-crlf.pl {staged_files}
+
+    # Regenerate docs/TOOLS.md whenever the tool registry changes and stage the
+    # result, so CI's `--check` guard never catches drift the contributor
+    # didn't cause on purpose. Runs `npm run docs:tools` (tsc + generator).
+    - name: tools-doc
+      glob:
+        - "src/tools/**/*.ts"
+        - "scripts/generate-tools-doc.mjs"
+      run: npm run docs:tools && git add docs/TOOLS.md
