@@ -6,7 +6,7 @@ export const setDocumentTool = defineTool({
   group: "shot",
   title: "Set Document Settings",
   description:
-    "Update document-level settings: fps, frame range, current frame, active camera. FPS and frame range are also mirrored onto the active render data.",
+    "Update document-level settings: fps, frame range, current frame, active camera, active take. FPS and frame range are also mirrored onto the active render data.",
   inputShape: {
     fps: z
       .number()
@@ -21,6 +21,10 @@ export const setDocumentTool = defineTool({
       .string()
       .optional()
       .describe("Name of the camera object to set as scene camera."),
+    active_take: z
+      .string()
+      .optional()
+      .describe("Name of the take to make current (Main is always valid)."),
   },
   async handler(args, client) {
     return textResult(await client.request("set_document", args, 10_000));

@@ -50,7 +50,7 @@ Document state, frame range / fps / camera, RenderData + Take creation, scene me
 
 | Tool                 | Description                                                                                                                                                                                   |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `set_document`       | Update document-level settings: fps, frame range, current frame, active camera.                                                                                                               |
+| `set_document`       | Update document-level settings: fps, frame range, current frame, active camera, active take.                                                                                                  |
 | `import_scene`       | Merge an external file (abc/fbx/obj/c4d/etc.) into the active document via MergeDocument.                                                                                                     |
 | `create_render_data` | Create (or update-if-exists) a RenderData with resolution / renderer / fps / frame range in one call.                                                                                         |
 | `create_take`        | Create or update a Take (AddTake + SetCamera + SetRenderData + SetChecked) in one call.                                                                                                       |

@@ -371,7 +371,10 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
         else:
             override = take.FindOverride(td, target)
             if override is None:
-                override = take.OverrideNode(td, target)
+                # OverrideNode(takeData, node, deleteAnim) — the third arg is
+                # required on C4D 2026+. False keeps the scene-side animation
+                # intact (we're only adding an override on top).
+                override = take.OverrideNode(td, target, False)
             if override is None:
                 raise RuntimeError("OverrideNode returned None")
 
@@ -406,14 +409,52 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
                         {"path": entry.get("path"), "error": f"{type(exc).__name__}: {exc}"}
                     )
 
-            # Clear requested paths (mark unoverridden).
-            for p in clear_paths:
-                try:
-                    descid, norm = _path_to_desc_id(target, p)
-                    override.UpdateSceneNode(td, descid)
-                    cleared.append(norm)
-                except Exception as exc:
-                    errors.append({"path": p, "error": f"{type(exc).__name__}: {exc}"})
+            # Clear requested paths (mark unoverridden). C4D 2026's
+            # DeleteOverride drops the internal override marker but leaves the
+            # scene node's cached value stuck on the old override value, so we
+            # first copy the Main-take value into the override and call
+            # UpdateSceneNode to force a resync — then remove the override
+            # marker via DeleteOverride(td, node, descID). Active take is
+            # swapped momentarily to read Main values and restored afterward.
+            if clear_paths:
+                main_take = td.GetMainTake()
+                cur_take = td.GetCurrentTake()
+                resolved: list[tuple[Any, c4d.DescID, Any]] = []  # (path, descid, norm)
+                for p in clear_paths:
+                    try:
+                        descid, norm = _path_to_desc_id(target, p)
+                        resolved.append((p, descid, norm))
+                    except Exception as exc:
+                        errors.append({"path": p, "error": f"{type(exc).__name__}: {exc}"})
+
+                if resolved:
+                    td.SetCurrentTake(main_take)
+                    c4d.EventAdd()
+                    main_values: dict[int, Any] = {}
+                    for idx, (p, descid, _norm) in enumerate(resolved):
+                        try:
+                            main_values[idx] = target[descid]
+                        except Exception as exc:
+                            errors.append(
+                                {"path": p, "error": f"read main: {type(exc).__name__}: {exc}"}
+                            )
+                    td.SetCurrentTake(take)
+                    c4d.EventAdd()
+                    for idx, (p, descid, norm) in enumerate(resolved):
+                        if idx not in main_values:
+                            continue
+                        try:
+                            cur_ov = take.FindOverride(td, target)
+                            if cur_ov is not None:
+                                cur_ov[descid] = main_values[idx]
+                                cur_ov.UpdateSceneNode(td, descid)
+                            take.DeleteOverride(td, target, descid)
+                            cleared.append(norm)
+                        except Exception as exc:
+                            errors.append({"path": p, "error": f"{type(exc).__name__}: {exc}"})
+                    if cur_take is not None and cur_take is not take:
+                        td.SetCurrentTake(cur_take)
+                        c4d.EventAdd()
     finally:
         doc.EndUndo()
     c4d.EventAdd()
@@ -545,5 +586,16 @@ def handle_set_document(params: dict[str, Any]) -> dict[str, Any]:
             if bd:
                 bd.SetSceneCamera(cam)
                 updated["active_camera"] = cam.GetName()
+    if "active_take" in params:
+        take_name = params["active_take"]
+        if take_name:
+            td = doc.GetTakeData()
+            if td is None:
+                raise RuntimeError("take data unavailable")
+            take = _find_take(str(take_name))
+            if take is None:
+                raise ValueError(f"take not found: {take_name}")
+            td.SetCurrentTake(take)
+            updated["active_take"] = take.GetName()
     c4d.EventAdd()
     return {"updated": updated}

@@ -322,6 +322,59 @@ describe.skipIf(!ready)("entities + handles", () => {
     },
   );
 
+  // ---------------------------------------------------------------------
+  // create_entity kind=video_post
+  // ---------------------------------------------------------------------
+
+  test("create_entity kind=video_post attaches to a render_data parent", async () => {
+    const rdName = testName("vp_rd");
+    await c.call("create_render_data", { name: rdName });
+
+    const vps = await c.call<{ plugins: Array<{ id: number }> }>("list_plugins", {
+      plugin_type: "video_post",
+    });
+    if (vps.plugins.length === 0) return; // no video_posts on this install
+    const vpTypeId = vps.plugins[0].id;
+
+    const r = await c.call<{
+      handle: { kind: string; render_data: string; type_id: number };
+    }>("create_entity", {
+      kind: "video_post",
+      type_id: vpTypeId,
+      parent: { kind: "render_data", name: rdName },
+    });
+    expect(r.handle.kind).toBe("video_post");
+    expect(r.handle.render_data).toBe(rdName);
+    expect(r.handle.type_id).toBe(vpTypeId);
+  });
+
+  test("create_entity kind=video_post rejects a missing parent", async () => {
+    const vps = await c.call<{ plugins: Array<{ id: number }> }>("list_plugins", {
+      plugin_type: "video_post",
+    });
+    if (vps.plugins.length === 0) return;
+    const err = await c.callExpectError("create_entity", {
+      kind: "video_post",
+      type_id: vps.plugins[0].id,
+    });
+    expect(err).toMatch(/parent|render_data/i);
+  });
+
+  test("create_entity kind=video_post rejects a non-render_data parent", async () => {
+    const owner = testName("vp_wrong_parent");
+    await c.call("create_entity", { kind: "object", type_id: OCUBE, name: owner });
+    const vps = await c.call<{ plugins: Array<{ id: number }> }>("list_plugins", {
+      plugin_type: "video_post",
+    });
+    if (vps.plugins.length === 0) return;
+    const err = await c.callExpectError("create_entity", {
+      kind: "video_post",
+      type_id: vps.plugins[0].id,
+      parent: { kind: "object", name: owner },
+    });
+    expect(err).toMatch(/render_data/i);
+  });
+
   test.skipIf(execPythonDisabled)("dump_shader respects max_depth=0", async () => {
     const matName = testName("dump_depth");
     await c.call("exec_python", {

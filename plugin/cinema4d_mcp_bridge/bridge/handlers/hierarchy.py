@@ -157,6 +157,11 @@ def handle_clone_entity(params: dict[str, Any]) -> dict[str, Any]:
             new_take = td.AddTake(clone_name, parent_take, src)
             if new_take is None:
                 raise RuntimeError(f"AddTake failed for {clone_name!r}")
+            # AddTake(cloneFrom=...) tends to ignore the `name` argument and
+            # assign "<src>.1"-style disambiguators instead, so force the
+            # caller-provided name afterwards.
+            if new_take.GetName() != clone_name:
+                new_take.SetName(clone_name)
             doc.AddUndo(c4d.UNDOTYPE_NEW, new_take)
         finally:
             doc.EndUndo()
