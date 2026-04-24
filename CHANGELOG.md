@@ -7,6 +7,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- Xpresso (classic GvNodeMaster) graph authoring — four new tools that
+  mirror the node-material flow but target Xpresso tags:
+  `list_xpresso_nodes` (flat walk with stable dotted-index path ids and
+  per-port summaries), `apply_xpresso_graph` (declarative node + connect
+  builder, including `references` for Object/Link node BaseLink slots),
+  `set_xpresso_port` (low-level add / remove / connect / disconnect /
+  set*value escape hatch), and `remove_xpresso_node`. Operator ids accept
+  short aliases (`object`/`const`/`math`/`formula`/`python`/…) or raw
+  `c4d.ID_OPERATOR*\*`ints. Lets the LLM build a working gear-meshing rig
+end-to-end without dropping into`exec_python`.
 - `plugin_options` handle kind — resolves a scene-saver / scene-loader /
   bitmap-saver / etc. plugin's private settings `BaseList2D` (the object
   the Attribute Manager export dialog writes into, e.g. Alembic's
