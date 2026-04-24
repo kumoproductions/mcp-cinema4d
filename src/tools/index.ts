@@ -4,6 +4,7 @@ import type { ToolResult } from "./types.js";
 
 import { addUserDataTool } from "./add-user-data.js";
 import { applyGraphDescriptionTool } from "./apply-graph-description.js";
+import { applyXpressoGraphTool } from "./apply-xpresso-graph.js";
 import { assignMaterialTool } from "./assign-material.js";
 import { assignToLayerTool } from "./assign-to-layer.js";
 import { batchTool } from "./batch.js";
@@ -30,6 +31,7 @@ import { importSceneTool } from "./import-scene.js";
 import { listEntitiesTool } from "./list-entities.js";
 import { listGraphNodeAssetsTool } from "./list-graph-node-assets.js";
 import { listGraphNodesTool } from "./list-graph-nodes.js";
+import { listXpressoNodesTool } from "./list-xpresso-nodes.js";
 import { listMographClonesTool } from "./list-mograph-clones.js";
 import { listLayersTool } from "./list-layers.js";
 import { listPluginsTool } from "./list-plugins.js";
@@ -43,6 +45,7 @@ import { pingTool } from "./ping.js";
 import { removeEntityTool } from "./remove-entity.js";
 import { removeGraphNodeTool } from "./remove-graph-node.js";
 import { removeUserDataTool } from "./remove-user-data.js";
+import { removeXpressoNodeTool } from "./remove-xpresso-node.js";
 import { renderTool } from "./render.js";
 import { resetSceneTool } from "./reset-scene.js";
 import { sampleTransformTool } from "./sample-transform.js";
@@ -56,6 +59,7 @@ import { setMeshSelectionTool } from "./set-mesh-selection.js";
 import { setParamsTool } from "./set-params.js";
 import { setSelectionTool } from "./set-selection.js";
 import { setTransformTool } from "./set-transform.js";
+import { setXpressoPortTool } from "./set-xpresso-port.js";
 import { takeOverrideTool } from "./take-override.js";
 import { undoTool } from "./undo.js";
 
@@ -122,6 +126,11 @@ export const ALL_TOOLS: AnyTool[] = [
   applyGraphDescriptionTool,
   setGraphPortTool,
   removeGraphNodeTool,
+  // Xpresso (classic GvNodeMaster)
+  listXpressoNodesTool,
+  applyXpressoGraphTool,
+  setXpressoPortTool,
+  removeXpressoNodeTool,
   // Tag helpers
   assignMaterialTool,
   // Transforms

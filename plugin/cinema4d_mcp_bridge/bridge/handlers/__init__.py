@@ -19,6 +19,8 @@ Submodules:
   document_io  — save_document, open_document, new_document
   node_materials — list_graph_nodes, apply_graph_description,
                    set_graph_port, remove_graph_node
+  xpresso      — list_xpresso_nodes, apply_xpresso_graph,
+                 set_xpresso_port, remove_xpresso_node
   tags         — assign_material
   animation    — list_tracks, get_keyframes
   layers       — list_layers, create_layer, assign_to_layer,
@@ -108,6 +110,12 @@ from .user_data import (
     handle_list_user_data,
     handle_remove_user_data,
 )
+from .xpresso import (
+    handle_apply_xpresso_graph,
+    handle_list_xpresso_nodes,
+    handle_remove_xpresso_node,
+    handle_set_xpresso_port,
+)
 
 HANDLERS = {
     "ping": handle_ping,
@@ -169,6 +177,10 @@ HANDLERS = {
     "get_object_layer": handle_get_object_layer,
     "set_layer_flags": handle_set_layer_flags,
     "get_document_state": handle_get_document_state,
+    "list_xpresso_nodes": handle_list_xpresso_nodes,
+    "apply_xpresso_graph": handle_apply_xpresso_graph,
+    "set_xpresso_port": handle_set_xpresso_port,
+    "remove_xpresso_node": handle_remove_xpresso_node,
 }
 
 __all__ = ["HANDLERS"]

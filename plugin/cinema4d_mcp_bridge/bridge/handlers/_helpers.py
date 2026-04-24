@@ -341,6 +341,7 @@ def _resolve_handle(h) -> Any:
       {kind:"video_post", render_data, type_id}
       {kind:"shader", owner:<handle>, index}
       {kind:"plugin_options", plugin_id, plugin_type?}
+      {kind:"gv_node", tag:<tag handle>, id? | name?}  — Xpresso GvNode
     """
     if h is None:
         return None
@@ -390,7 +391,31 @@ def _resolve_handle(h) -> Any:
         return _shader_at(owner, 0)
     if kind == "plugin_options":
         return _resolve_plugin_options(h)
+    if kind == "gv_node":
+        return _resolve_gv_node_handle(h)
     raise ValueError(f"unknown handle kind: {kind!r}")
+
+
+def _resolve_gv_node_handle(h: dict[str, Any]):
+    """Resolve ``{kind:"gv_node", tag, id?|name?}`` to a GvNode.
+
+    Imports xpresso helpers lazily to avoid a circular import at module
+    load time (xpresso.py imports from this module).
+    """
+    tag_h = h.get("tag")
+    if not tag_h:
+        raise ValueError("gv_node handle requires 'tag'")
+    tag = _resolve_handle(tag_h)
+    if tag is None:
+        return None
+    if tag.GetType() != c4d.Texpresso:
+        raise ValueError(
+            f"gv_node.tag did not resolve to a Texpresso tag (got type {tag.GetType()})"
+        )
+    # Local import — avoids circular dependency with xpresso handlers.
+    from .xpresso import _resolve_gv_node
+
+    return _resolve_gv_node(tag, h.get("id"), h.get("name"))
 
 
 # ---------------------------------------------------------------------------

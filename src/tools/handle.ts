@@ -21,6 +21,11 @@ import { z } from "zod";
  *       Attribute Manager dialog writes into — e.g. Alembic's
  *       `ABCEXPORT_FRAME_START`). Use with `describe` to list available
  *       options, then `set_params` to write them before `save_document`.
+ *   - `{kind: "gv_node", tag: <tag handle>, id?: "0.2" | name?: "..."}`
+ *       An Xpresso GvNode inside a Texpresso tag. `id` is the stable
+ *       dotted-index path returned by `list_xpresso_nodes`; `name`
+ *       falls back when id is not known. GvNode inherits from BaseList2D,
+ *       so `set_params` / `describe` / `get_params` work on it directly.
  */
 export const handleSchema: z.ZodTypeAny = z.lazy(() =>
   z.union([
@@ -62,6 +67,16 @@ export const handleSchema: z.ZodTypeAny = z.lazy(() =>
       .refine((v) => v.index !== undefined || Boolean(v.name), {
         message: "shader handle requires `name` or `index`",
       }),
+    z
+      .object({
+        kind: z.literal("gv_node"),
+        tag: handleSchema,
+        id: z.string().optional(),
+        name: z.string().optional(),
+      })
+      .refine((v) => Boolean(v.id) || Boolean(v.name), {
+        message: "gv_node handle requires `id` or `name`",
+      }),
     z.object({
       kind: z.literal("plugin_options"),
       plugin_id: z.union([z.number().int(), z.string()]),
@@ -88,4 +103,4 @@ export const handleSchema: z.ZodTypeAny = z.lazy(() =>
 );
 
 export const handleDescription =
-  'C4D entity handle. Shapes: {kind:"object",name?|path?}, {kind:"render_data",name}, {kind:"take",name}, {kind:"material",name}, {kind:"tag",object?|object_path?,type_id?,tag_name?}, {kind:"video_post",render_data,type_id}, {kind:"shader",owner:<handle>,index}, {kind:"plugin_options",plugin_id,plugin_type?} (plugin_id accepts an int or a format alias like "abc"/"fbx"/"obj"/"usd"/"gltf"; plugin_type defaults to "scene_saver"; resolves to the plugin\'s settings BaseList2D — describe+set_params it to configure exporter options before save_document). Prefer `path` over `name` when names are not unique.';
+  'C4D entity handle. Shapes: {kind:"object",name?|path?}, {kind:"render_data",name}, {kind:"take",name}, {kind:"material",name}, {kind:"tag",object?|object_path?,type_id?,tag_name?}, {kind:"video_post",render_data,type_id}, {kind:"shader",owner:<handle>,index}, {kind:"gv_node",tag:<tag handle>,id?|name?} (Xpresso GvNode; use list_xpresso_nodes to discover stable path ids — GvNode inherits BaseList2D so set_params/get_params/describe work on it), {kind:"plugin_options",plugin_id,plugin_type?} (plugin_id accepts an int or a format alias like "abc"/"fbx"/"obj"/"usd"/"gltf"; plugin_type defaults to "scene_saver"; resolves to the plugin\'s settings BaseList2D — describe+set_params it to configure exporter options before save_document). Prefer `path` over `name` when names are not unique.';

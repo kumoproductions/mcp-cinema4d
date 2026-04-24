@@ -4,7 +4,7 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 Every CRUD tool identifies entities by a typed `handle` object — see [Entity handles](../README.md#entity-handles).
 
-56 tools across 16 groups.
+60 tools across 16 groups.
 
 ## Basics
 
@@ -108,14 +108,18 @@ Save / open / create documents.
 
 Walk and edit node-material graphs (Standard / Redshift / ...).
 
-| Tool                      | Description                                                                                                                        |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `list_graph_nodes`        | Walk a node graph and return a flat list of nodes.                                                                                 |
-| `list_graph_node_assets`  | Enumerate registered node-template assets for a node space.                                                                        |
-| `get_graph_info`          | Report which node spaces a material exposes a graph in, which one is currently active, and the alias table the bridge understands. |
-| `apply_graph_description` | Build or mutate a node material graph using maxon.GraphDescription's declarative dict syntax.                                      |
-| `set_graph_port`          | Update a single port on a node addressable by its stable $id within a node material graph.                                         |
-| `remove_graph_node`       | Delete a node by id from a node-material graph.                                                                                    |
+| Tool                      | Description                                                                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_graph_nodes`        | Walk a node graph and return a flat list of nodes.                                                                                                      |
+| `list_graph_node_assets`  | Enumerate registered node-template assets for a node space.                                                                                             |
+| `get_graph_info`          | Report which node spaces a material exposes a graph in, which one is currently active, and the alias table the bridge understands.                      |
+| `apply_graph_description` | Build or mutate a node material graph using maxon.GraphDescription's declarative dict syntax.                                                           |
+| `set_graph_port`          | Update a single port on a node addressable by its stable $id within a node material graph.                                                              |
+| `remove_graph_node`       | Delete a node by id from a node-material graph.                                                                                                         |
+| `list_xpresso_nodes`      | Walk an Xpresso (Texpresso / GvNodeMaster) tag and return a flat list of its GvNodes.                                                                   |
+| `apply_xpresso_graph`     | Declarative builder for an Xpresso (classic GvNodeMaster) graph — mirror of `apply_graph_description` but for Xpresso rather than Maxon node materials. |
+| `set_xpresso_port`        | Low-level Xpresso port primitive — covers cases `apply_xpresso_graph` can't express.                                                                    |
+| `remove_xpresso_node`     | Delete a GvNode from an Xpresso graph.                                                                                                                  |
 
 ## Tag helpers
 
