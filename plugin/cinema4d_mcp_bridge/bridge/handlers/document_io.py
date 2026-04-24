@@ -15,34 +15,7 @@ from typing import Any
 import c4d
 from c4d import documents
 
-from ._helpers import _require_abs_path, _require_writable_path
-
-# Alias → c4d.FORMAT_* constant name. Resolved lazily via getattr so a C4D
-# build missing an export format produces a readable error instead of failing
-# at import time.
-_FORMAT_ALIASES: dict[str, str] = {
-    "c4d": "FORMAT_C4DEXPORT",
-    "abc": "FORMAT_ABCEXPORT",
-    "alembic": "FORMAT_ABCEXPORT",
-    "fbx": "FORMAT_FBX_EXPORT",
-    "obj": "FORMAT_OBJ2EXPORT",
-    "stl": "FORMAT_STLEXPORT",
-    "ply": "FORMAT_PLYEXPORT",
-    "usda": "FORMAT_USDEXPORT",
-    "usd": "FORMAT_USDEXPORT",
-    "gltf": "FORMAT_GLTFEXPORT",
-}
-
-
-def _resolve_format(alias: str) -> int:
-    key = alias.strip().lower()
-    const_name = _FORMAT_ALIASES.get(key)
-    if const_name is None:
-        raise ValueError(f"unknown format {alias!r}; accepted: {sorted(_FORMAT_ALIASES)}")
-    value = getattr(c4d, const_name, None)
-    if value is None:
-        raise RuntimeError(f"C4D build does not expose c4d.{const_name} — cannot export {alias!r}")
-    return int(value)
+from ._helpers import _require_abs_path, _require_writable_path, _resolve_format
 
 
 def handle_save_document(params: dict[str, Any]) -> dict[str, Any]:
@@ -65,9 +38,11 @@ def handle_save_document(params: dict[str, Any]) -> dict[str, Any]:
     if doc is None:
         raise RuntimeError("no active document")
 
+    # SAVEDOCUMENTFLAGS_SAVEAS triggers the Save-As dialog in C4D 2026 (seen
+    # empirically when the MCP handler previously set it for copy=True).
+    # "Save As Copy" semantics are simply: save to `path` and DON'T mutate the
+    # doc's internal path/name afterward — no exporter flag is required.
     flags = c4d.SAVEDOCUMENTFLAGS_DONTADDTORECENTLIST
-    if save_copy:
-        flags |= c4d.SAVEDOCUMENTFLAGS_SAVEAS
 
     ok = documents.SaveDocument(doc, path, flags, fmt)
     if not ok:

@@ -220,6 +220,114 @@ def _shader_by_name(owner, name: str):
     return None
 
 
+# Format alias → c4d.FORMAT_* constant name. Values are the plugin IDs
+# that SaveDocument / the scene-saver plugins are registered with, so the
+# same map doubles as a "which plugin provides {abc,fbx,obj,…} export" lookup
+# for the plugin_options handle. Resolved via getattr so a C4D build missing
+# a format (e.g. GLTF not installed) produces a readable error at use time.
+_FORMAT_ALIASES: dict[str, str] = {
+    "c4d": "FORMAT_C4DEXPORT",
+    "abc": "FORMAT_ABCEXPORT",
+    "alembic": "FORMAT_ABCEXPORT",
+    "fbx": "FORMAT_FBX_EXPORT",
+    "obj": "FORMAT_OBJ2EXPORT",
+    "stl": "FORMAT_STLEXPORT",
+    "ply": "FORMAT_PLYEXPORT",
+    "usda": "FORMAT_USDEXPORT",
+    "usd": "FORMAT_USDEXPORT",
+    "gltf": "FORMAT_GLTFEXPORT",
+}
+
+
+def _resolve_format(alias: str) -> int:
+    """Translate a format alias (``"abc"``, ``"fbx"``, …) into a C4D FORMAT_* int."""
+    key = alias.strip().lower()
+    const_name = _FORMAT_ALIASES.get(key)
+    if const_name is None:
+        raise ValueError(f"unknown format {alias!r}; accepted: {sorted(_FORMAT_ALIASES)}")
+    value = getattr(c4d, const_name, None)
+    if value is None:
+        raise RuntimeError(f"C4D build does not expose c4d.{const_name} — cannot export {alias!r}")
+    return int(value)
+
+
+# Plugin type alias → c4d.PLUGINTYPE_* constant name. Shared by list_plugins
+# (for filtering) and by _resolve_plugin_options (for narrowing FindPlugin).
+_PLUGIN_TYPE_ALIASES: dict[str, str] = {
+    "command": "PLUGINTYPE_COMMAND",
+    "object": "PLUGINTYPE_OBJECT",
+    "tag": "PLUGINTYPE_TAG",
+    "material": "PLUGINTYPE_MATERIAL",
+    "shader": "PLUGINTYPE_SHADER",
+    "video_post": "PLUGINTYPE_VIDEOPOST",
+    "scene_loader": "PLUGINTYPE_SCENELOADER",
+    "scene_saver": "PLUGINTYPE_SCENESAVER",
+    "bitmap_loader": "PLUGINTYPE_BITMAPLOADER",
+    "bitmap_saver": "PLUGINTYPE_BITMAPSAVER",
+    "tool": "PLUGINTYPE_TOOL",
+    "preference": "PLUGINTYPE_PREFS",
+    "node": "PLUGINTYPE_NODE",
+    "sculpt_brush": "PLUGINTYPE_SCULPT",
+}
+
+
+def _plugin_type_alias(name: str) -> int:
+    """Map a short alias to a ``c4d.PLUGINTYPE_*`` constant.
+
+    Unknown aliases raise ``ValueError`` with the full list of accepted names
+    (only those that exist in the running C4D version are reported).
+    """
+    resolved = {k: getattr(c4d, v) for k, v in _PLUGIN_TYPE_ALIASES.items() if hasattr(c4d, v)}
+    if name not in resolved:
+        raise ValueError(f"unknown plugin_type {name!r}; accepted: {sorted(resolved)}")
+    return resolved[name]
+
+
+def _resolve_plugin_options(h: dict[str, Any]):
+    """Resolve a ``{kind:"plugin_options", plugin_id, plugin_type?}`` handle.
+
+    Returns the plugin's private settings ``BaseList2D`` (the one UIs write
+    into — e.g. Alembic's ``ABCEXPORT_*`` options) obtained via
+    ``MSG_RETRIEVEPRIVATEDATA`` on the found plugin. Returns ``None`` when
+    the plugin isn't registered or refuses to expose its data.
+
+    Accepts:
+      plugin_id:   int (raw plugin id) or str (format alias — "abc", "fbx",
+                   "obj", "usd", "gltf", "stl", "ply"). String aliases are
+                   resolved through FORMAT_*EXPORT constants and therefore
+                   only make sense when ``plugin_type`` is ``"scene_saver"``
+                   (the default). For importers / other plugin kinds, pass
+                   the numeric id.
+      plugin_type: alias string, defaults to ``"scene_saver"``. See
+                   ``_PLUGIN_TYPE_ALIASES`` for the accepted keys.
+    """
+    pid_raw = h.get("plugin_id")
+    if pid_raw is None:
+        raise ValueError("plugin_options handle requires 'plugin_id'")
+    if isinstance(pid_raw, bool) or not isinstance(pid_raw, (int, str)):
+        raise ValueError(f"plugin_id must be int or alias string, got {type(pid_raw).__name__}")
+    pid = _resolve_format(pid_raw) if isinstance(pid_raw, str) else int(pid_raw)
+
+    ptype_name = h.get("plugin_type", "scene_saver")
+    if not isinstance(ptype_name, str):
+        raise ValueError(f"plugin_type must be a string alias, got {type(ptype_name).__name__}")
+    ptype = _plugin_type_alias(ptype_name)
+
+    plug = c4d.plugins.FindPlugin(pid, ptype)
+    if plug is None:
+        return None
+    op: dict[str, Any] = {}
+    try:
+        if not plug.Message(c4d.MSG_RETRIEVEPRIVATEDATA, op):
+            return None
+    except Exception:
+        return None
+    # The plugin fills "imexporter" with a BaseList2D it owns; the caller
+    # writes to it via BaseList2D.__setitem__, and changes persist across
+    # future FindPlugin lookups (the plugin is a singleton).
+    return op.get("imexporter")
+
+
 def _resolve_handle(h) -> Any:
     """Resolve a handle dict to a C4D entity. Returns None if not found.
 
@@ -232,6 +340,7 @@ def _resolve_handle(h) -> Any:
       {kind:"tag", object, type_id?, tag_name?}
       {kind:"video_post", render_data, type_id}
       {kind:"shader", owner:<handle>, index}
+      {kind:"plugin_options", plugin_id, plugin_type?}
     """
     if h is None:
         return None
@@ -279,6 +388,8 @@ def _resolve_handle(h) -> Any:
         if isinstance(name, str) and name:
             return None  # explicit name given but not found; don't silently pick first
         return _shader_at(owner, 0)
+    if kind == "plugin_options":
+        return _resolve_plugin_options(h)
     raise ValueError(f"unknown handle kind: {kind!r}")
 
 

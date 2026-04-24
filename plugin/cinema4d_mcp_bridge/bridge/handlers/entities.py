@@ -312,12 +312,20 @@ def handle_set_params(params: dict[str, Any]) -> dict[str, Any]:
     if doc is None:
         raise RuntimeError("no active document")
 
+    # plugin_options resolves to a plugin's private BaseList2D (e.g. Alembic's
+    # imexporter) — it lives outside the document, so wrapping writes in
+    # StartUndo/AddUndo is both meaningless and has been observed to
+    # destabilise C4D 2026 when the target isn't owned by any doc.
+    use_undo = not (isinstance(h, dict) and h.get("kind") == "plugin_options")
+
     applied: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
-    doc.StartUndo()
+    if use_undo:
+        doc.StartUndo()
     try:
-        with contextlib.suppress(Exception):
-            doc.AddUndo(c4d.UNDOTYPE_CHANGE, obj)
+        if use_undo:
+            with contextlib.suppress(Exception):
+                doc.AddUndo(c4d.UNDOTYPE_CHANGE, obj)
         for entry in raw_values:
             if not isinstance(entry, dict) or "path" not in entry or "value" not in entry:
                 errors.append({"entry": entry, "error": "must be {path, value}"})
@@ -348,7 +356,8 @@ def handle_set_params(params: dict[str, Any]) -> dict[str, Any]:
                     continue
             applied.append({"path": normalized, "value": _json_safe(obj[key])})
     finally:
-        doc.EndUndo()
+        if use_undo:
+            doc.EndUndo()
     c4d.EventAdd()
     return {"applied": applied, "errors": errors}
 

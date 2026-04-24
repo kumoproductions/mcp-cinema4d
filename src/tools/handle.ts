@@ -16,6 +16,11 @@ import { z } from "zod";
  *       (or `object_path` instead of `object` to disambiguate)
  *   - `{kind: "video_post", render_data: "VFX_Shot002", type_id: 1029525}`
  *   - `{kind: "shader", owner: <handle>, index: 0}`
+ *   - `{kind: "plugin_options", plugin_id: "abc"|1028082, plugin_type?: "scene_saver"}`
+ *       Resolves to the plugin's private settings BaseList2D (the one the
+ *       Attribute Manager dialog writes into — e.g. Alembic's
+ *       `ABCEXPORT_FRAME_START`). Use with `describe` to list available
+ *       options, then `set_params` to write them before `save_document`.
  */
 export const handleSchema: z.ZodTypeAny = z.lazy(() =>
   z.union([
@@ -57,8 +62,30 @@ export const handleSchema: z.ZodTypeAny = z.lazy(() =>
       .refine((v) => v.index !== undefined || Boolean(v.name), {
         message: "shader handle requires `name` or `index`",
       }),
+    z.object({
+      kind: z.literal("plugin_options"),
+      plugin_id: z.union([z.number().int(), z.string()]),
+      plugin_type: z
+        .enum([
+          "command",
+          "object",
+          "tag",
+          "material",
+          "shader",
+          "video_post",
+          "scene_loader",
+          "scene_saver",
+          "bitmap_loader",
+          "bitmap_saver",
+          "tool",
+          "preference",
+          "node",
+          "sculpt_brush",
+        ])
+        .optional(),
+    }),
   ]),
 );
 
 export const handleDescription =
-  'C4D entity handle. Shapes: {kind:"object",name?|path?}, {kind:"render_data",name}, {kind:"take",name}, {kind:"material",name}, {kind:"tag",object?|object_path?,type_id?,tag_name?}, {kind:"video_post",render_data,type_id}, {kind:"shader",owner:<handle>,index}. Prefer `path` over `name` when names are not unique.';
+  'C4D entity handle. Shapes: {kind:"object",name?|path?}, {kind:"render_data",name}, {kind:"take",name}, {kind:"material",name}, {kind:"tag",object?|object_path?,type_id?,tag_name?}, {kind:"video_post",render_data,type_id}, {kind:"shader",owner:<handle>,index}, {kind:"plugin_options",plugin_id,plugin_type?} (plugin_id accepts an int or a format alias like "abc"/"fbx"/"obj"/"usd"/"gltf"; plugin_type defaults to "scene_saver"; resolves to the plugin\'s settings BaseList2D — describe+set_params it to configure exporter options before save_document). Prefer `path` over `name` when names are not unique.';

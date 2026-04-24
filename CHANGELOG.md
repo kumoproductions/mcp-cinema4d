@@ -5,6 +5,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- `plugin_options` handle kind — resolves a scene-saver / scene-loader /
+  bitmap-saver / etc. plugin's private settings `BaseList2D` (the object
+  the Attribute Manager export dialog writes into, e.g. Alembic's
+  `ABCEXPORT_FRAME_START`). Accepts either a format alias
+  (`"abc"`/`"fbx"`/`"obj"`/`"usd"`/`"gltf"`/…) or a raw plugin id, with
+  `plugin_type` defaulting to `"scene_saver"`. Plugs straight into the
+  existing `describe` / `get_params` / `set_params` flow, so configuring
+  exporter options before `save_document` no longer needs `exec_python`
+  and direct `MSG_RETRIEVEPRIVATEDATA` calls.
+
+### Fixed
+
+- `save_document` with `copy:true` no longer flips
+  `SAVEDOCUMENTFLAGS_SAVEAS`, which had the side effect of popping the
+  modal Save-As dialog in C4D 2026 and freezing the bridge until the
+  user dismissed it. "Save as copy" is implemented purely by not mutating
+  the doc's internal path/name after the write.
+- `set_params` on a `plugin_options` handle no longer wraps the BaseList2D
+  write in `doc.StartUndo` / `AddUndo` / `EndUndo`. Plugin-private
+  settings live outside any document and calling AddUndo on them was
+  observed to destabilise C4D 2026.
+
 ## [0.1.0] - 2026-04-19
 
 First public release. 55 tools across 16 groups — see

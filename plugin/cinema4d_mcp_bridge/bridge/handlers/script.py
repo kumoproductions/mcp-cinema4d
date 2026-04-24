@@ -23,6 +23,7 @@ from ._helpers import (
     _find_take,
     _find_videopost,
     _json_safe,
+    _plugin_type_alias,
     _resolve_handle,
     _shader_at,
 )
@@ -126,35 +127,6 @@ def handle_call_command(params: dict[str, Any]) -> dict[str, Any]:
     c4d.CallCommand(cid, subid)
     c4d.EventAdd()
     return {"command_id": cid, "subid": subid, "name": name, "was_enabled": enabled}
-
-
-def _plugin_type_alias(name: str) -> int:
-    """Map a short alias to a ``c4d.PLUGINTYPE_*`` constant.
-
-    Unknown aliases raise ``ValueError`` with the full list of accepted names
-    (only those that exist in the running C4D version are reported).
-    """
-    aliases_map = {
-        "command": "PLUGINTYPE_COMMAND",
-        "object": "PLUGINTYPE_OBJECT",
-        "tag": "PLUGINTYPE_TAG",
-        "material": "PLUGINTYPE_MATERIAL",
-        "shader": "PLUGINTYPE_SHADER",
-        "video_post": "PLUGINTYPE_VIDEOPOST",
-        "scene_loader": "PLUGINTYPE_SCENELOADER",
-        "scene_saver": "PLUGINTYPE_SCENESAVER",
-        "bitmap_loader": "PLUGINTYPE_BITMAPLOADER",
-        "bitmap_saver": "PLUGINTYPE_BITMAPSAVER",
-        "tool": "PLUGINTYPE_TOOL",
-        "preference": "PLUGINTYPE_PREFS",
-        "node": "PLUGINTYPE_NODE",
-        "sculpt_brush": "PLUGINTYPE_SCULPT",
-    }
-    # Keep only aliases that resolve on this C4D build.
-    resolved = {k: getattr(c4d, v) for k, v in aliases_map.items() if hasattr(c4d, v)}
-    if name not in resolved:
-        raise ValueError(f"unknown plugin_type {name!r}; accepted: {sorted(resolved)}")
-    return resolved[name]
 
 
 def _enumerate_plugins(
