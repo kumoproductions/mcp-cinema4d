@@ -79,6 +79,30 @@ export class MCPTestClient {
     }
     return extractText(res);
   }
+
+  /**
+   * Returns the unwrapped MCP content array — used by tests that need to
+   * inspect non-text parts (e.g. ``preview_render`` returns ``[image, text]``
+   * and ``call()``'s text extractor would just see the image part).
+   */
+  async callRaw(
+    name: string,
+    args: Record<string, unknown> = {},
+    options: { timeoutMs?: number } = {},
+  ): Promise<{ content: Array<Record<string, unknown>>; isError: boolean }> {
+    const res = await this.client.callTool(
+      { name, arguments: args },
+      undefined,
+      options.timeoutMs !== undefined ? { timeout: options.timeoutMs } : undefined,
+    );
+    const content = Array.isArray(res?.content)
+      ? (res.content as Array<Record<string, unknown>>)
+      : [];
+    if (res.isError) {
+      throw new Error(`tool ${name} returned error: ${extractText(res)}`);
+    }
+    return { content, isError: Boolean(res.isError) };
+  }
 }
 
 function extractText(res: any): string {

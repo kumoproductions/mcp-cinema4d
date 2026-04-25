@@ -8,7 +8,7 @@ export const previewRenderTool = defineTool({
   group: "basics",
   title: "Preview Render (Viewport, Constant Lines)",
   description:
-    "Quick agent-friendly verification render. Uses the Viewport renderer with the active editor view temporarily switched to Constant Shading (Lines) — sketch-style and fast. Independent of the active RenderData (built freestanding, never inserted) and restores BaseDraw / camera / time / take in finally. Returns a base64 PNG inline so the agent can directly view it. Use `view: top|bottom|left|right|front|back` for an auto-framed temp camera, or `camera` to render through a named scene camera.",
+    "Quick agent-friendly verification render. Uses the Viewport renderer with the active editor view temporarily switched to Constant Shading (Lines) — sketch-style and fast. Independent of the active RenderData (built freestanding, never inserted) and restores BaseDraw / camera / time / take in finally. Returns a base64 PNG inline so the agent can directly view it. Use `view: top|bottom|left|right|front|back` for an auto-framed temp camera, or `camera` to render through a named scene camera. Pass `save_path` to also write the PNG to disk.",
   inputShape: {
     width: z
       .number()
@@ -43,6 +43,12 @@ export const previewRenderTool = defineTool({
       .string()
       .optional()
       .describe("Optional take name to switch to before rendering. Restored afterward."),
+    save_path: z
+      .string()
+      .optional()
+      .describe(
+        "Optional absolute PNG path. When set, the rendered image is also written to disk (parent directory must already exist). The base64 PNG is still returned inline.",
+      ),
   },
   async handler(args, client) {
     const params: Record<string, unknown> = {};
@@ -52,6 +58,7 @@ export const previewRenderTool = defineTool({
     if (args.camera !== undefined) params.camera = args.camera;
     if (args.frame !== undefined) params.frame = args.frame;
     if (args.take !== undefined) params.take = args.take;
+    if (args.save_path !== undefined) params.save_path = args.save_path;
     return imageResult(await client.request("preview_render", params, 60_000));
   },
 });

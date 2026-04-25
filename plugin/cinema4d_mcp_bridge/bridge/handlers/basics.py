@@ -215,17 +215,20 @@ def handle_render(params: dict[str, Any]) -> dict[str, Any]:
 
 _PRESET_VIEWS = ("current", "top", "bottom", "left", "right", "front", "back")
 
-# Direction *toward* the scene center expressed as a unit offset from center
-# to the camera position. (e.g. "top" = camera above center, looking down.)
+# Per-preset camera setup: (offset direction from scene center to eye, world-up
+# reference for orienting the camera roll).
+#
 # C4D coord system: +Y up, -Z is "front" of an object (camera default looks
 # toward +Z), so the conventional editor "Front" view places the camera at -Z.
-_PRESET_OFFSETS: dict[str, c4d.Vector] = {
-    "top": c4d.Vector(0, 1, 0),
-    "bottom": c4d.Vector(0, -1, 0),
-    "right": c4d.Vector(1, 0, 0),
-    "left": c4d.Vector(-1, 0, 0),
-    "front": c4d.Vector(0, 0, -1),
-    "back": c4d.Vector(0, 0, 1),
+# For top/bottom the forward axis is parallel to world +Y, so we pick a
+# Z-axis world-up reference instead to avoid a degenerate cross product.
+_PRESET_VIEW_BASIS: dict[str, tuple[c4d.Vector, c4d.Vector]] = {
+    "top": (c4d.Vector(0, 1, 0), c4d.Vector(0, 0, -1)),
+    "bottom": (c4d.Vector(0, -1, 0), c4d.Vector(0, 0, 1)),
+    "right": (c4d.Vector(1, 0, 0), c4d.Vector(0, 1, 0)),
+    "left": (c4d.Vector(-1, 0, 0), c4d.Vector(0, 1, 0)),
+    "front": (c4d.Vector(0, 0, -1), c4d.Vector(0, 1, 0)),
+    "back": (c4d.Vector(0, 0, 1), c4d.Vector(0, 1, 0)),
 }
 
 
@@ -279,24 +282,33 @@ def _scene_bounds(doc: c4d.documents.BaseDocument) -> tuple[c4d.Vector, float]:
 def _make_preset_camera(doc: c4d.documents.BaseDocument, view: str) -> c4d.BaseObject:
     """Build a temp perspective camera looking at the scene from ``view``.
 
-    C4D's Python API doesn't expose ``MatrixLookAt``; we build the matrix via
-    ``VectorToHPB`` (look direction → euler angles, bank=0) + ``HPBToMatrix``
-    and stamp the camera position into ``mat.off``. C4D cameras shoot along
-    their local +Z axis here (VectorToHPB's convention), so the input
-    direction is ``target - eye`` (camera-to-scene).
+    Builds the world matrix directly from explicit basis vectors (forward,
+    right, up) rather than going through ``VectorToHPB`` / ``HPBToMatrix``:
+    HPB conversion is ambiguous for axis-aligned look directions (top /
+    bottom hit pitch=±90° gimbal lock, back hits heading=180°), which can
+    leak unintended bank/roll into the resulting camera. C4D cameras shoot
+    along their local +Z axis, so we set v3 = forward = (center minus eye).
     """
     center, radius = _scene_bounds(doc)
-    offset_dir = _PRESET_OFFSETS[view]
+    offset_dir, world_up = _PRESET_VIEW_BASIS[view]
     eye = center + offset_dir * (radius * 4.0)
 
-    look = center - eye
-    if look.GetLength() == 0:
-        # Degenerate (eye == center, e.g. empty scene at origin) — nudge so
-        # VectorToHPB has something to work with.
-        look = c4d.Vector(0, 0, 1)
-    hpb = c4d.utils.VectorToHPB(look)
-    mat = c4d.utils.HPBToMatrix(hpb)
-    mat.off = eye
+    forward = center - eye
+    if forward.GetLength() == 0:
+        # Degenerate (eye == center, e.g. empty scene at origin) — point along +Z.
+        forward = c4d.Vector(0, 0, 1)
+    forward = forward.GetNormalized()
+
+    right = world_up.Cross(forward)
+    if right.GetLength() == 0:
+        # Defensive: world_up parallel to forward (shouldn't happen with the
+        # presets above, but stay correct if the table is ever edited).
+        alt_up = c4d.Vector(1, 0, 0) if abs(forward.x) < 0.9 else c4d.Vector(0, 0, 1)
+        right = alt_up.Cross(forward)
+    right = right.GetNormalized()
+    up = forward.Cross(right)
+
+    mat = c4d.Matrix(eye, right, up, forward)
 
     cam = c4d.BaseObject(c4d.Ocamera)
     if cam is None:
@@ -323,6 +335,9 @@ def handle_preview_render(params: dict[str, Any]) -> dict[str, Any]:
                       non-"current" view.
       frame:          optional integer frame; defaults to current time.
       take:           optional take name; defaults to current take.
+      save_path:      optional absolute PNG path. When set, the rendered
+                      image is also written to disk (parent dir must exist)
+                      in addition to being returned inline as base64.
     """
     doc = documents.GetActiveDocument()
     if doc is None:
@@ -345,6 +360,13 @@ def handle_preview_render(params: dict[str, Any]) -> dict[str, Any]:
 
     frame_param = params.get("frame")
     take_name = params.get("take")
+
+    raw_save_path = params.get("save_path")
+    save_path: str | None
+    if isinstance(raw_save_path, str) and raw_save_path:
+        save_path = _require_writable_path(raw_save_path)
+    else:
+        save_path = None
 
     bd = doc.GetActiveBaseDraw()
     if bd is None:
@@ -432,11 +454,18 @@ def handle_preview_render(params: dict[str, Any]) -> dict[str, Any]:
         if result != c4d.RENDERRESULT_OK:
             raise RuntimeError(f"preview render failed with code {result}")
 
-        # Save → read → base64 → cleanup. Going via a temp file is simpler
-        # than fishing the raw pixels out of the MultipassBitmap (and matches
-        # what handle_render does for the on-disk path case).
-        fd, png_path = tempfile.mkstemp(prefix="c4d_mcp_preview_", suffix=".png")
-        os.close(fd)
+        # Save → read → base64. When the caller supplied ``save_path`` we
+        # write directly there and keep the file; otherwise we use a temp
+        # file and delete it after reading. Going via a file is simpler than
+        # fishing raw pixels out of the MultipassBitmap (and matches what
+        # handle_render does for the on-disk path case).
+        if save_path is not None:
+            png_path = save_path
+            cleanup_png = False
+        else:
+            fd, png_path = tempfile.mkstemp(prefix="c4d_mcp_preview_", suffix=".png")
+            os.close(fd)
+            cleanup_png = True
         try:
             save_result = bitmap.Save(png_path, c4d.FILTER_PNG)
             if save_result != c4d.IMAGERESULT_OK:
@@ -444,10 +473,11 @@ def handle_preview_render(params: dict[str, Any]) -> dict[str, Any]:
             with open(png_path, "rb") as fh:
                 png_bytes = fh.read()
         finally:
-            with contextlib.suppress(Exception):
-                os.remove(png_path)
+            if cleanup_png:
+                with contextlib.suppress(Exception):
+                    os.remove(png_path)
 
-        return {
+        result_payload: dict[str, Any] = {
             "image_base64": base64.b64encode(png_bytes).decode("ascii"),
             "mime_type": "image/png",
             "width": width,
@@ -456,6 +486,9 @@ def handle_preview_render(params: dict[str, Any]) -> dict[str, Any]:
             "camera": target_camera_label,
             "frame": doc.GetTime().GetFrame(fps),
         }
+        if save_path is not None:
+            result_payload["saved_path"] = save_path
+        return result_payload
     finally:
         # Best-effort restore — never raise from finally.
         with contextlib.suppress(Exception):
