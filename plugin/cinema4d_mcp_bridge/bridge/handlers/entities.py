@@ -18,6 +18,8 @@ from ._helpers import (
     _apply_params,
     _describe_params,
     _dump_container,
+    _ensure_entity_writable,
+    _ensure_python_type_id_allowed,
     _find_object,
     _find_object_by_path,
     _find_render_data,
@@ -308,6 +310,11 @@ def handle_set_params(params: dict[str, Any]) -> dict[str, Any]:
     if obj is None:
         raise ValueError(f"handle not resolved: {h}")
 
+    # Refuse writes to Python-bearing entities (Tpython, Opython, Xpresso
+    # Python operator, …) without C4D_MCP_ENABLE_PYTHON_OPS — the code
+    # parameter on these is RCE-equivalent to exec_python.
+    _ensure_entity_writable(obj)
+
     doc = documents.GetActiveDocument()
     if doc is None:
         raise RuntimeError("no active document")
@@ -488,6 +495,9 @@ def handle_create_entity(params: dict[str, Any]) -> dict[str, Any]:
     if type_raw is None:
         raise ValueError("type_id required")
     type_id = resolve_type_id(type_raw)
+    # Refuse to create Python-bearing entities (Tpython, Opython, Python
+    # effector, …) without C4D_MCP_ENABLE_PYTHON_OPS — see _helpers gate.
+    _ensure_python_type_id_allowed(type_id, kind=kind)
 
     doc = documents.GetActiveDocument()
     if doc is None:

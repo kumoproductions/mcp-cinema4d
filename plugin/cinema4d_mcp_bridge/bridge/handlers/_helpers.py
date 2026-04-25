@@ -45,6 +45,108 @@ def _require_writable_path(path: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Python-bearing entity gate
+# ---------------------------------------------------------------------------
+#
+# A handful of Cinema 4D plugin types store user-supplied Python in their
+# container and execute it on scene evaluation: Python tag, Python generator,
+# Python (MoGraph) effector, and the Xpresso Python operator. From a security
+# standpoint creating or editing one of these is equivalent to ``exec_python``
+# — a misbehaving (e.g. prompt-injected) caller can drop a payload into the
+# code parameter and get arbitrary code execution on the next scene eval,
+# fully bypassing the ``C4D_MCP_ENABLE_EXEC_PYTHON`` opt-in.
+#
+# We therefore gate creation and mutation of these types behind a separate
+# opt-in env var. Kept independent of ``C4D_MCP_ENABLE_EXEC_PYTHON`` so users
+# who don't want an interactive Python REPL but DO author scenes with Python
+# tags can opt into just the latter.
+
+_PYTHON_OPS_ENV = "C4D_MCP_ENABLE_PYTHON_OPS"
+
+# Plugin (BaseList2D) type ids that carry user Python source. Resolved by
+# c4d.* name with a numeric fallback so older / variant builds that don't
+# expose every constant still get the deny.
+_PYTHON_BEARING_TYPE_IDS: frozenset[int] = frozenset(
+    int(tid)
+    for tid in (
+        getattr(c4d, "Tpython", 1022749),  # Python tag
+        getattr(c4d, "Opython", 1023866),  # Python generator (object)
+        getattr(c4d, "Omgpython", 1025800),  # MoGraph Python effector (object)
+        getattr(c4d, "Fpython", 440000277),  # Python field (object plugin namespace)
+    )
+    if isinstance(tid, int)
+)
+
+# Xpresso operator ids — different namespace from BaseList2D type ids
+# (GvNode.GetOperatorID(), not GetType()).
+_PYTHON_OPERATOR_IDS: frozenset[int] = frozenset(
+    int(oid)
+    for oid in (
+        getattr(c4d, "ID_OPERATOR_PYTHON", 1022471),  # Xpresso Python operator
+        1026947,  # "Python Thread Node" — second Python-bearing GvNode shipped by corelibs
+    )
+    if isinstance(oid, int)
+)
+
+
+def _python_ops_enabled() -> bool:
+    """Return True when the operator has opted IN to Python-bearing edits."""
+    flag = os.environ.get(_PYTHON_OPS_ENV, "")
+    return flag.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _python_ops_error(detail: str) -> RuntimeError:
+    return RuntimeError(
+        f"{detail}: requires {_PYTHON_OPS_ENV}=1 (defaults off — these types "
+        "execute caller-supplied Python on scene evaluation, equivalent to "
+        "exec_python). Set the env var in the Cinema 4D launch environment "
+        "and restart to enable."
+    )
+
+
+def _ensure_python_type_id_allowed(type_id: int, *, kind: str) -> None:
+    """Raise unless the operator opted IN, when ``type_id`` carries Python source."""
+    if int(type_id) in _PYTHON_BEARING_TYPE_IDS and not _python_ops_enabled():
+        raise _python_ops_error(f"{kind} type_id={type_id} is a Python-bearing plugin")
+
+
+def _ensure_python_operator_id_allowed(operator_id: int) -> None:
+    """Raise unless the operator opted IN, when the Xpresso operator is Python."""
+    if int(operator_id) in _PYTHON_OPERATOR_IDS and not _python_ops_enabled():
+        raise _python_ops_error(f"Xpresso operator_id={operator_id} is the Python operator")
+
+
+def _ensure_entity_writable(entity: Any) -> None:
+    """Raise on writes to a Python-bearing entity unless opted IN.
+
+    Covers both BaseList2D-derived entities (matched by GetType()) and
+    GvNode-derived entities inside an Xpresso tag (matched by GetOperatorID()).
+    """
+    if entity is None or _python_ops_enabled():
+        return
+    # GvNode lives in c4d.modules.graphview; import lazily to avoid pulling
+    # graphview at module load on builds where it is not registered.
+    try:
+        from c4d.modules import graphview
+    except Exception:  # pragma: no cover — graphview should always be available
+        graphview = None  # type: ignore[assignment]
+    if graphview is not None and isinstance(entity, graphview.GvNode):
+        try:
+            op_id = int(entity.GetOperatorID())
+        except Exception:
+            return
+        if op_id in _PYTHON_OPERATOR_IDS:
+            raise _python_ops_error(f"writing to Xpresso Python operator (operator_id={op_id})")
+        return
+    try:
+        type_id = int(entity.GetType())
+    except Exception:
+        return
+    if type_id in _PYTHON_BEARING_TYPE_IDS:
+        raise _python_ops_error(f"writing to Python-bearing entity (type_id={type_id})")
+
+
+# ---------------------------------------------------------------------------
 # Entity lookup
 # ---------------------------------------------------------------------------
 

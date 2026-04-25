@@ -21,6 +21,7 @@ from c4d import documents
 from c4d.modules import graphview
 
 from ._helpers import (
+    _ensure_python_operator_id_allowed,
     _find_object,
     _find_object_by_path,
     _find_tag,
@@ -509,6 +510,9 @@ def handle_apply_xpresso_graph(params: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(spec, dict):
                 raise ValueError(f"nodes[{caller_id!r}] must be an object spec")
             op_id = _resolve_operator_id(spec.get("operator_id"))
+            # Gate the Python operator behind C4D_MCP_ENABLE_PYTHON_OPS — its
+            # source-code parameter is RCE-equivalent to exec_python.
+            _ensure_python_operator_id_allowed(op_id)
             # Resolve parent. "root" / None -> master root. Otherwise either
             # another caller id created earlier in this call, or a path id
             # to an existing group node.
