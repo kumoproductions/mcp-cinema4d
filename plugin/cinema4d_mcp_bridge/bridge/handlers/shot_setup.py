@@ -19,6 +19,7 @@ from c4d import documents
 from ._helpers import (
     FRAME_SEQUENCE_ALIASES,
     _apply_params,
+    _ensure_entity_writable,
     _find_object,
     _find_render_data,
     _find_take,
@@ -333,6 +334,10 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
     target = _resolve_handle(target_h)
     if target is None:
         raise ValueError(f"target not resolved: {target_h}")
+
+    # Refuse take overrides on a Python-bearing entity unless opted IN —
+    # overriding the code parameter is the same RCE as set_params.
+    _ensure_entity_writable(target)
 
     applied: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
