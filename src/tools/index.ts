@@ -42,6 +42,7 @@ import { moveEntityTool } from "./move-entity.js";
 import { newDocumentTool } from "./new-document.js";
 import { openDocumentTool } from "./open-document.js";
 import { pingTool } from "./ping.js";
+import { previewRenderTool } from "./preview-render.js";
 import { removeEntityTool } from "./remove-entity.js";
 import { removeGraphNodeTool } from "./remove-graph-node.js";
 import { removeUserDataTool } from "./remove-user-data.js";
@@ -79,6 +80,7 @@ export const ALL_TOOLS: AnyTool[] = [
   // Basics
   pingTool,
   renderTool,
+  previewRenderTool,
   resetSceneTool,
   // Script-style
   execPythonTool,

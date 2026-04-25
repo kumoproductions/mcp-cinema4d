@@ -38,6 +38,7 @@ from .animation import (
 )
 from .basics import (
     handle_ping,
+    handle_preview_render,
     handle_render,
     handle_reset_scene,
     handle_undo,
@@ -121,6 +122,7 @@ HANDLERS = {
     "ping": handle_ping,
     "undo": handle_undo,
     "render": handle_render,
+    "preview_render": handle_preview_render,
     "reset_scene": handle_reset_scene,
     # exec_python is intentionally kept in the table so the handler can raise a
     # descriptive error when opted out. The opt-in check happens inside the
