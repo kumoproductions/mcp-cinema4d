@@ -96,9 +96,9 @@ jobs:
           mkdir -p "$RUNNER_TEMP/mcp-publisher"
           gh release download \
             --repo modelcontextprotocol/registry \
-            --pattern "mcp-publisher_*_linux_amd64.tar.gz" \
+            --pattern "mcp-publisher_linux_amd64.tar.gz" \
             --dir "$RUNNER_TEMP/mcp-publisher"
-          tar -xzf "$RUNNER_TEMP/mcp-publisher"/mcp-publisher_*_linux_amd64.tar.gz -C "$RUNNER_TEMP/mcp-publisher"
+          tar -xzf "$RUNNER_TEMP/mcp-publisher/mcp-publisher_linux_amd64.tar.gz" -C "$RUNNER_TEMP/mcp-publisher"
           echo "$RUNNER_TEMP/mcp-publisher" >> "$GITHUB_PATH"
 
       - name: Wait for npm propagation
