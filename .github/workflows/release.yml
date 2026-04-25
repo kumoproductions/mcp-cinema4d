@@ -32,3 +32,92 @@ jobs:
             "${ARCHIVE}" \
             --generate-notes \
             --title "${GITHUB_REF_NAME}"
+
+  npm-publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify tag matches package.json / server.json
+        run: |
+          set -eu
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          SRV_VERSION="$(node -p "require('./server.json').version")"
+          SRV_PKG_VERSION="$(node -p "require('./server.json').packages[0].version")"
+          for v in "$PKG_VERSION" "$SRV_VERSION" "$SRV_PKG_VERSION"; do
+            if [ "$v" != "$TAG_VERSION" ]; then
+              echo "::error::version mismatch: tag=$TAG_VERSION package.json=$PKG_VERSION server.json=$SRV_VERSION packages[0]=$SRV_PKG_VERSION"
+              exit 1
+            fi
+          done
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Verify npm CLI supports Trusted Publishing
+        run: |
+          set -eu
+          NPM_VERSION="$(npm --version)"
+          REQUIRED="11.5.1"
+          if [ "$(printf '%s\n%s\n' "$REQUIRED" "$NPM_VERSION" | sort -V | head -n1)" != "$REQUIRED" ]; then
+            echo "::error::npm $NPM_VERSION < $REQUIRED — Trusted Publishing requires 11.5.1+"
+            exit 1
+          fi
+
+      - name: Publish (Trusted Publishing via OIDC)
+        run: npm publish --access public
+
+  mcp-registry-publish:
+    name: Publish to MCP Registry
+    needs: npm-publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mcp-publisher
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/mcp-publisher"
+          gh release download \
+            --repo modelcontextprotocol/registry \
+            --pattern "mcp-publisher_*_linux_amd64.tar.gz" \
+            --dir "$RUNNER_TEMP/mcp-publisher"
+          tar -xzf "$RUNNER_TEMP/mcp-publisher"/mcp-publisher_*_linux_amd64.tar.gz -C "$RUNNER_TEMP/mcp-publisher"
+          echo "$RUNNER_TEMP/mcp-publisher" >> "$GITHUB_PATH"
+
+      - name: Wait for npm propagation
+        run: |
+          set -eu
+          VERSION="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 30); do
+            if npm view "@kumoproductions/mcp-cinema4d@${VERSION}" version >/dev/null 2>&1; then
+              echo "npm has version ${VERSION}"
+              exit 0
+            fi
+            echo "waiting for npm to expose ${VERSION} (attempt $i)..."
+            sleep 10
+          done
+          echo "::error::npm did not surface ${VERSION} within 5 minutes"
+          exit 1
+
+      - name: Login (GitHub OIDC)
+        run: mcp-publisher login github-oidc
+
+      - name: Publish
+        run: mcp-publisher publish
