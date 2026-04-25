@@ -134,3 +134,39 @@ jobs:
 
       - name: Publish
         run: mcp-publisher publish
+
+  ghpkg-mirror:
+    name: Mirror to GitHub Packages
+    needs: npm-publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://npm.pkg.github.com
+          scope: "@kumoproductions"
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Rewrite publishConfig for GitHub Packages
+        run: |
+          node -e "const f='package.json';const fs=require('node:fs');const p=JSON.parse(fs.readFileSync(f,'utf8'));p.publishConfig={access:'public',registry:'https://npm.pkg.github.com'};fs.writeFileSync(f, JSON.stringify(p,null,2)+'\n');"
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          VERSION="${GITHUB_REF_NAME#v}"
+          if npm view "@kumoproductions/mcp-cinema4d@${VERSION}" --registry=https://npm.pkg.github.com version >/dev/null 2>&1; then
+            echo "@kumoproductions/mcp-cinema4d@${VERSION} already on GitHub Packages — skipping"
+            exit 0
+          fi
+          npm publish
