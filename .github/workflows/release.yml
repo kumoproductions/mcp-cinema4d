@@ -24,14 +24,20 @@ jobs:
           cd ..
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            "${ARCHIVE}" \
-            --generate-notes \
-            --title "${GITHUB_REF_NAME}"
+          set -eu
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "release ${GITHUB_REF_NAME} already exists — uploading asset (clobber)"
+            gh release upload "${GITHUB_REF_NAME}" "${ARCHIVE}" --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              "${ARCHIVE}" \
+              --generate-notes \
+              --title "${GITHUB_REF_NAME}"
+          fi
 
   npm-publish:
     name: Publish to npm
@@ -76,7 +82,14 @@ jobs:
           fi
 
       - name: Publish (Trusted Publishing via OIDC)
-        run: npm publish --access public
+        run: |
+          set -eu
+          VERSION="${GITHUB_REF_NAME#v}"
+          if npm view "@kumoproductions/mcp-cinema4d@${VERSION}" version >/dev/null 2>&1; then
+            echo "@kumoproductions/mcp-cinema4d@${VERSION} already on npm — skipping publish"
+            exit 0
+          fi
+          npm publish --access public
 
   mcp-registry-publish:
     name: Publish to MCP Registry
