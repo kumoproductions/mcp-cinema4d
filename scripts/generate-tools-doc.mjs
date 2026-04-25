@@ -69,7 +69,7 @@ function summarize(description) {
 }
 
 function escapeCell(s) {
-  return s.replace(/\|/g, "\\|");
+  return s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
 }
 
 function renderGroupSection(meta, tools) {
