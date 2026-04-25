@@ -326,7 +326,7 @@ def handle_preview_render(params: dict[str, Any]) -> dict[str, Any]:
     PNG inline (base64) without touching the user's active RenderData.
 
     params:
-      width, height:  output size in pixels (default 512 x 512, capped 4096).
+      width, height:  output size in pixels (default 1024 x 1024, capped 4096).
       view:           "current" (default — uses active BaseDraw camera),
                       "top" | "bottom" | "left" | "right" | "front" | "back"
                       (creates a temp camera looking at the scene bounds).
@@ -343,8 +343,8 @@ def handle_preview_render(params: dict[str, Any]) -> dict[str, Any]:
     if doc is None:
         raise RuntimeError("no active document")
 
-    width = int(params.get("width", 512))
-    height = int(params.get("height", 512))
+    width = int(params.get("width", 1024))
+    height = int(params.get("height", 1024))
     if width <= 0 or height <= 0:
         raise ValueError(f"width/height must be positive, got {width}x{height}")
     if width > 4096 or height > 4096:

@@ -16,14 +16,14 @@ export const previewRenderTool = defineTool({
       .positive()
       .max(4096)
       .optional()
-      .describe("Output width in pixels (default 512, max 4096)."),
+      .describe("Output width in pixels (default 1024, max 4096)."),
     height: z
       .number()
       .int()
       .positive()
       .max(4096)
       .optional()
-      .describe("Output height in pixels (default 512, max 4096)."),
+      .describe("Output height in pixels (default 1024, max 4096)."),
     view: z
       .enum(VIEW_VALUES)
       .optional()
