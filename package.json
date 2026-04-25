@@ -1,6 +1,6 @@
 {
   "name": "@kumoproductions/mcp-cinema4d",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "TypeScript MCP server for Cinema 4D with generic entity CRUD, parameter-level access, undo-grouped batch ops, and security controls.",
   "keywords": [
     "3d",
