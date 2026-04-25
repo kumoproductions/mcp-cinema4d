@@ -129,10 +129,27 @@ jobs:
           echo "::error::npm did not surface ${VERSION} within 5 minutes"
           exit 1
 
+      - name: Skip if version already on MCP Registry
+        id: registry_check
+        run: |
+          set -eu
+          VERSION="${GITHUB_REF_NAME#v}"
+          URL="https://registry.modelcontextprotocol.io/v0/servers/io.github.kumoproductions%2Fmcp-cinema4d/versions/${VERSION}"
+          STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "$URL")"
+          if [ "$STATUS" = "200" ]; then
+            echo "already published — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "not yet published (HTTP $STATUS) — proceeding"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Login (GitHub OIDC)
+        if: steps.registry_check.outputs.skip != 'true'
         run: mcp-publisher login github-oidc
 
       - name: Publish
+        if: steps.registry_check.outputs.skip != 'true'
         run: mcp-publisher publish
 
   ghpkg-mirror:
