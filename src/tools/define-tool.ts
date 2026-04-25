@@ -41,3 +41,30 @@ export function defineTool<S extends z.ZodRawShape>(spec: ToolSpec<S>): ToolSpec
 export function textResult(value: unknown): ToolResult {
   return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
 }
+
+/**
+ * Wraps a bridge response that returns ``{image_base64, mime_type, ...}`` into
+ * an MCP ToolResult with both image and text content. The text part carries
+ * the rest of the response (sans the image bytes) as JSON metadata so callers
+ * can read the resolved view / camera / frame alongside the picture.
+ */
+export function imageResult(value: unknown): ToolResult {
+  if (!value || typeof value !== "object") {
+    return textResult(value);
+  }
+  const { image_base64, mime_type, ...meta } = value as {
+    image_base64?: unknown;
+    mime_type?: unknown;
+    [key: string]: unknown;
+  };
+  if (typeof image_base64 !== "string" || !image_base64) {
+    return textResult(value);
+  }
+  const mime = typeof mime_type === "string" && mime_type ? mime_type : "image/png";
+  return {
+    content: [
+      { type: "image", data: image_base64, mimeType: mime },
+      { type: "text", text: JSON.stringify(meta, null, 2) },
+    ],
+  };
+}

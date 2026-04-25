@@ -4,17 +4,18 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 Every CRUD tool identifies entities by a typed `handle` object — see [Entity handles](../README.md#entity-handles).
 
-60 tools across 16 groups.
+61 tools across 16 groups.
 
 ## Basics
 
 Connectivity + top-level document actions.
 
-| Tool          | Description                                                                        |
-| ------------- | ---------------------------------------------------------------------------------- |
-| `ping`        | Check connectivity to the Cinema 4D bridge plugin.                                 |
-| `render`      | Render the active Cinema 4D document at its currently-active render data settings. |
-| `reset_scene` | Clear scene state in one RPC.                                                      |
+| Tool             | Description                                                                        |
+| ---------------- | ---------------------------------------------------------------------------------- |
+| `ping`           | Check connectivity to the Cinema 4D bridge plugin.                                 |
+| `render`         | Render the active Cinema 4D document at its currently-active render data settings. |
+| `preview_render` | Quick agent-friendly verification render.                                          |
+| `reset_scene`    | Clear scene state in one RPC.                                                      |
 
 ## Script-style
 
