@@ -76,7 +76,7 @@ describe.skipIf(!ready)("animation (read)", () => {
       component: "y",
     });
     expect(r.keys.length).toBe(2);
-    const frames = r.keys.map((k) => k.frame).sort((a, b) => a - b);
+    const frames = r.keys.map((k) => k.frame).toSorted((a, b) => a - b);
     expect(frames).toEqual([0, 20]);
     const at20 = r.keys.find((k) => k.frame === 20)!;
     expect(at20.value).toBeCloseTo(100, 3);
@@ -190,7 +190,7 @@ describe.skipIf(!ready)("animation (read)", () => {
       start_frame: 5,
       end_frame: 25,
     });
-    const frames = r.keys.map((k) => k.frame).sort((a, b) => a - b);
+    const frames = r.keys.map((k) => k.frame).toSorted((a, b) => a - b);
     expect(frames).toEqual([10, 20]);
   });
 });

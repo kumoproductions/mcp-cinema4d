@@ -66,7 +66,7 @@ describe.skipIf(!ready)("selection", () => {
       mode: "add",
     });
     const r = await c.call<{ selected_objects: Array<{ path: string }> }>("get_selection");
-    const paths = r.selected_objects.map((o) => o.path).sort();
+    const paths = r.selected_objects.map((o) => o.path).toSorted();
     expect(paths).toEqual([`/${a}`, `/${b}`]);
   });
 
