@@ -110,6 +110,7 @@ describe.skipIf(!ready)("basics", () => {
       const textPart = res.content.find((p) => p.type === "text") as
         | { type: "text"; text: string }
         | undefined;
+      expect(textPart, `view=${view} should produce text metadata`).toBeDefined();
       const meta = JSON.parse(textPart!.text) as { view: string; camera: string | null };
       expect(meta.view).toBe(view);
       // Preset views label the temp camera by the view name itself.
@@ -145,6 +146,7 @@ describe.skipIf(!ready)("basics", () => {
       const textPart = res.content.find((p) => p.type === "text") as
         | { type: "text"; text: string }
         | undefined;
+      expect(textPart, "save_path response should include text metadata").toBeDefined();
       const meta = JSON.parse(textPart!.text) as { saved_path?: string };
       expect(meta.saved_path).toBe(out);
     } finally {

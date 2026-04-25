@@ -354,7 +354,8 @@ def handle_preview_render(params: dict[str, Any]) -> dict[str, Any]:
     if view not in _PRESET_VIEWS:
         raise ValueError(f"unknown view {view!r}; accepted: {list(_PRESET_VIEWS)}")
 
-    camera_name = params.get("camera")
+    raw_camera = params.get("camera")
+    camera_name = raw_camera if isinstance(raw_camera, str) and raw_camera else None
     if camera_name is not None and view != "current":
         raise ValueError("`camera` and a non-'current' `view` are mutually exclusive")
 
@@ -397,6 +398,11 @@ def handle_preview_render(params: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError(f"take not found: {take_name!r}")
             if take_data is not None:
                 take_data.SetCurrentTake(t)
+                # SetCurrentTake alone doesn't propagate the take's parameter
+                # overrides into the live scene — the next ExecutePasses does.
+                # Without this, a take-only call (no frame) would render the
+                # previous take's state.
+                doc.ExecutePasses(None, True, True, True, c4d.BUILDFLAGS_NONE)
 
         # Frame jump (defaults to current).
         fps = doc.GetFps() or 30
@@ -411,9 +417,9 @@ def handle_preview_render(params: dict[str, Any]) -> dict[str, Any]:
 
         # Camera resolution.
         if camera_name:
-            target_camera = _find_object(str(camera_name))
-            if target_camera is None:
-                raise ValueError(f"camera object not found: {camera_name!r}")
+            target_camera = _find_object(camera_name)
+            if target_camera is None or target_camera.GetType() != c4d.Ocamera:
+                raise ValueError(f"camera object not found or not a camera: {camera_name!r}")
             target_camera_label = target_camera.GetName()
         elif view != "current":
             target_camera = _make_preset_camera(doc, view)

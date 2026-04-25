@@ -89,19 +89,19 @@ export class MCPTestClient {
     name: string,
     args: Record<string, unknown> = {},
     options: { timeoutMs?: number } = {},
-  ): Promise<{ content: Array<Record<string, unknown>>; isError: boolean }> {
+  ): Promise<{ content: Array<Record<string, unknown>> }> {
     const res = await this.client.callTool(
       { name, arguments: args },
       undefined,
       options.timeoutMs !== undefined ? { timeout: options.timeoutMs } : undefined,
     );
-    const content = Array.isArray(res?.content)
-      ? (res.content as Array<Record<string, unknown>>)
-      : [];
     if (res.isError) {
       throw new Error(`tool ${name} returned error: ${extractText(res)}`);
     }
-    return { content, isError: Boolean(res.isError) };
+    const content = Array.isArray(res?.content)
+      ? (res.content as Array<Record<string, unknown>>)
+      : [];
+    return { content };
   }
 }
 

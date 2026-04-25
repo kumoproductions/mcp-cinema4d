@@ -51,11 +51,15 @@ export const previewRenderTool = defineTool({
       ),
   },
   async handler(args, client) {
+    const camera = args.camera && args.camera.length > 0 ? args.camera : undefined;
+    if (camera !== undefined && args.view !== undefined && args.view !== "current") {
+      throw new Error("`camera` and a non-'current' `view` are mutually exclusive");
+    }
     const params: Record<string, unknown> = {};
     if (args.width !== undefined) params.width = args.width;
     if (args.height !== undefined) params.height = args.height;
     if (args.view !== undefined) params.view = args.view;
-    if (args.camera !== undefined) params.camera = args.camera;
+    if (camera !== undefined) params.camera = camera;
     if (args.frame !== undefined) params.frame = args.frame;
     if (args.take !== undefined) params.take = args.take;
     if (args.save_path !== undefined) params.save_path = args.save_path;
