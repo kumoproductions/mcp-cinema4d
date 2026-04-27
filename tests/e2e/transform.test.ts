@@ -1,11 +1,13 @@
 import { afterAll, beforeEach, describe, expect, test } from "vitest";
 import { cleanupByPrefix, MCPTestClient, probeBridge, resetScene, testName } from "./harness.js";
 
+const OCUBE = 5159;
+
 const probe = await probeBridge("transform");
 const ready = probe.ready;
 const client: MCPTestClient | null = probe.client ?? null;
 
-describe.skipIf(!ready)("set_transform", () => {
+describe.skipIf(!ready)("transform", () => {
   const c = client!;
 
   afterAll(async () => {
@@ -113,5 +115,43 @@ describe.skipIf(!ready)("set_transform", () => {
       pos: [1, 2, 3],
     });
     expect(err).toMatch(/matrix|pos|conflict/i);
+  });
+
+  // ---------------------------------------------------------------------------
+  // sample_transform
+  // ---------------------------------------------------------------------------
+
+  test("sample_transform walks frames and returns per-frame pos+rot", async () => {
+    const name = testName("sampled");
+    await c.call("create_entity", {
+      kind: "object",
+      type_id: OCUBE,
+      name,
+      position: [0, 0, 0],
+    });
+    const r = await c.call<{
+      samples: Array<{ frame: number; pos: number[]; rot: number[] }>;
+      format: string;
+    }>("sample_transform", {
+      handle: { kind: "object", name },
+      frames: [0, 5, 10],
+      format: "off_rot",
+    });
+    expect(r.format).toBe("off_rot");
+    expect(r.samples.length).toBe(3);
+    expect(r.samples[0].pos).toEqual([0, 0, 0]);
+    expect(r.samples[0].rot.length).toBe(3);
+  });
+
+  test("sample_transform rejects empty frame list", async () => {
+    const name = testName("sampled_err");
+    await c.call("create_entity", { kind: "object", type_id: OCUBE, name });
+    // Zod-level validation happens client-side, so expect an MCP error.
+    await expect(
+      c.call("sample_transform", {
+        handle: { kind: "object", name },
+        frames: [],
+      }),
+    ).rejects.toThrow();
   });
 });

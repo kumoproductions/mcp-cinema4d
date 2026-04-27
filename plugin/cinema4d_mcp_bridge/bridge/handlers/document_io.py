@@ -1,10 +1,14 @@
-"""Document I/O handlers: save_document, open_document, new_document.
+"""Document I/O and document-level settings handlers.
 
-Thin wrappers over ``c4d.documents.SaveDocument`` / ``LoadDocument`` /
+Save / open / new wrap ``c4d.documents.SaveDocument`` / ``LoadDocument`` /
 ``BaseDocument`` + ``InsertBaseDocument`` that normalise format aliases and
 keep the active-document swap explicit. Paths must be absolute — the bridge
 refuses relative paths so tests don't accidentally touch the C4D working
 directory.
+
+``import_scene`` merges an external scene file into the active document.
+``set_document`` updates document-level settings (fps, frame range, current
+frame, active camera/take).
 """
 
 from __future__ import annotations
@@ -15,7 +19,14 @@ from typing import Any
 import c4d
 from c4d import documents
 
-from ._helpers import _require_abs_path, _require_writable_path, _resolve_format
+from ._helpers import (
+    _find_object,
+    _find_take,
+    _require_abs_path,
+    _require_writable_path,
+    _resolve_format,
+    _resolve_handle,
+)
 
 
 def handle_save_document(params: dict[str, Any]) -> dict[str, Any]:
@@ -107,3 +118,127 @@ def handle_new_document(params: dict[str, Any]) -> dict[str, Any]:
         "switched": make_active,
         "active_document": active.GetDocumentName() if active else "",
     }
+
+
+def handle_import_scene(params: dict[str, Any]) -> dict[str, Any]:
+    """Merge an external scene file (abc/fbx/obj/c4d/...) into the active document.
+
+    params:
+      path:    absolute file path
+      filter:  "objects" | "materials" | "all" (default "all")
+      parent:  optional parent handle — newly-imported top-level objects are
+               moved under this object after import
+      rename:  optional new name for the first imported top-level object
+
+    Returns:
+      {"imported": [{name, type_id, type_name}, ...], "count": N}
+    """
+    path = _require_abs_path(params.get("path"), must_exist=True)
+
+    filt = str(params.get("filter", "all")).lower()
+    flags = 0
+    if filt in ("objects", "all"):
+        flags |= c4d.SCENEFILTER_OBJECTS
+    if filt in ("materials", "all"):
+        flags |= c4d.SCENEFILTER_MATERIALS
+    if flags == 0:
+        flags = c4d.SCENEFILTER_OBJECTS | c4d.SCENEFILTER_MATERIALS
+
+    doc = documents.GetActiveDocument()
+    if doc is None:
+        raise RuntimeError("no active document")
+
+    before = set()
+    o = doc.GetFirstObject()
+    while o is not None:
+        before.add(id(o))
+        o = o.GetNext()
+
+    ok = documents.MergeDocument(doc, path, flags)
+    if not ok:
+        raise RuntimeError(f"MergeDocument failed for {path}")
+
+    new_objs: list[c4d.BaseObject] = []
+    o = doc.GetFirstObject()
+    while o is not None:
+        if id(o) not in before:
+            new_objs.append(o)
+        o = o.GetNext()
+
+    rename = params.get("rename")
+    if rename and new_objs:
+        new_objs[0].SetName(str(rename))
+
+    parent_h = params.get("parent")
+    if parent_h:
+        parent = _resolve_handle(parent_h)
+        if parent is None:
+            raise ValueError(f"parent not resolved: {parent_h}")
+        for obj in new_objs:
+            obj.Remove()
+            obj.InsertUnder(parent)
+
+    imported = [
+        {"name": obj.GetName(), "type_id": obj.GetType(), "type_name": obj.GetTypeName()}
+        for obj in new_objs
+    ]
+    c4d.EventAdd()
+    return {"imported": imported, "count": len(imported)}
+
+
+def handle_set_document(params: dict[str, Any]) -> dict[str, Any]:
+    """Update document-level settings.
+
+    Supported keys: fps, frame_start, frame_end, current_frame, active_camera (name).
+    Also mirrors fps + frame range to the active render data.
+    """
+    doc = documents.GetActiveDocument()
+    if doc is None:
+        raise RuntimeError("no active document")
+    updated: dict[str, Any] = {}
+    if "fps" in params:
+        doc.SetFps(int(params["fps"]))
+        updated["fps"] = doc.GetFps()
+    fps = doc.GetFps()
+    if "frame_start" in params:
+        doc.SetMinTime(c4d.BaseTime(int(params["frame_start"]), fps))
+        doc.SetLoopMinTime(c4d.BaseTime(int(params["frame_start"]), fps))
+        updated["frame_start"] = int(params["frame_start"])
+    if "frame_end" in params:
+        doc.SetMaxTime(c4d.BaseTime(int(params["frame_end"]), fps))
+        doc.SetLoopMaxTime(c4d.BaseTime(int(params["frame_end"]), fps))
+        updated["frame_end"] = int(params["frame_end"])
+    if "current_frame" in params:
+        doc.SetTime(c4d.BaseTime(int(params["current_frame"]), fps))
+        updated["current_frame"] = int(params["current_frame"])
+    if any(k in params for k in ("fps", "frame_start", "frame_end")):
+        rd = doc.GetActiveRenderData()
+        if rd is not None:
+            if "frame_start" in params:
+                rd[c4d.RDATA_FRAMEFROM] = c4d.BaseTime(int(params["frame_start"]), fps)
+            if "frame_end" in params:
+                rd[c4d.RDATA_FRAMETO] = c4d.BaseTime(int(params["frame_end"]), fps)
+            rd[c4d.RDATA_FRAMERATE] = float(fps)
+    if "active_camera" in params:
+        cam_name = params["active_camera"]
+        if cam_name:
+            cam = _find_object(cam_name)
+            if cam is None:
+                raise ValueError(f"camera not found: {cam_name}")
+            bd = doc.GetRenderBaseDraw()
+            if bd:
+                bd.SetSceneCamera(cam)
+                updated["active_camera"] = cam.GetName()
+    if "active_take" in params:
+        take_name = params["active_take"]
+        if take_name:
+            td = doc.GetTakeData()
+            if td is None:
+                raise RuntimeError("take data unavailable")
+            take = _find_take(str(take_name))
+            if take is None:
+                raise ValueError(f"take not found: {take_name}")
+            td.SetCurrentTake(take)
+            updated["active_take"] = take.GetName()
+    c4d.EventAdd()
+    return {"updated": updated}

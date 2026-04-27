@@ -3,29 +3,33 @@
 All handlers run on Cinema 4D's main thread via the Dispatcher. They may
 freely call ``c4d`` APIs. Return values must be JSON-serializable.
 
-Submodules:
-  _helpers     — shared lookup / resolve / describe / apply_params helpers
-  basics       — ping, undo, render
-  entities     — generic handle-based CRUD + shader dump
-                 (list/describe/get/set/create/remove/set_keyframe/get_container/
-                 dump_shader)
-  shot_setup   — import_scene, create_render_data, create_take,
-                 sample_transform, set_document
-  script       — exec_python, call_command, list_plugins, batch
-  selection    — get_selection, set_selection
-  hierarchy    — move_entity, clone_entity
-  modeling     — modeling_command
-  mesh         — get_mesh, set_mesh
-  document_io  — save_document, open_document, new_document
+Submodules (organised by domain, not by workflow):
+  _helpers       — shared lookup / resolve / describe / apply_params helpers
+  basics         — ping, undo, reset_scene, render
+  preview_render — agent-friendly verification render (viewport, sketch-style)
+  entities       — generic handle-based CRUD on entities
+                   (list/describe/get/set/create/remove/get_container/dump_shader)
+  animation      — list_tracks, get_keyframes, set_keyframe,
+                   delete_keyframe, delete_track
+  transform      — set_transform (write), sample_transform (read)
+  takes          — create_take, take_override
+  render_data    — create_render_data
+  document_io    — save/open/new_document, import_scene, set_document
+  document_state — get_document_state
+  selection      — get_selection, set_selection
+  hierarchy      — move_entity, clone_entity
+  modeling       — modeling_command
+  mesh           — get_mesh, set_mesh, set_mesh_selection
   node_materials — list_graph_nodes, apply_graph_description,
                    set_graph_port, remove_graph_node
-  xpresso      — list_xpresso_nodes, apply_xpresso_graph,
-                 set_xpresso_port, remove_xpresso_node
-  tags         — assign_material
-  animation    — list_tracks, get_keyframes
-  layers       — list_layers, create_layer, assign_to_layer,
-                 get_object_layer, set_layer_flags
-  document_state — get_document_state
+  xpresso        — list_xpresso_nodes, apply_xpresso_graph,
+                   set_xpresso_port, remove_xpresso_node
+  tags           — assign_material
+  layers         — list_layers, create_layer, assign_to_layer,
+                   get_object_layer, set_layer_flags
+  user_data      — add/list/remove_user_data
+  mograph        — list_mograph_clones
+  script         — exec_python, call_command, list_plugins, batch
 """
 
 from __future__ import annotations
@@ -35,18 +39,20 @@ from .animation import (
     handle_delete_track,
     handle_get_keyframes,
     handle_list_tracks,
+    handle_set_keyframe,
 )
 from .basics import (
     handle_ping,
-    handle_preview_render,
     handle_render,
     handle_reset_scene,
     handle_undo,
 )
 from .document_io import (
+    handle_import_scene,
     handle_new_document,
     handle_open_document,
     handle_save_document,
+    handle_set_document,
 )
 from .document_state import handle_get_document_state
 from .entities import (
@@ -57,7 +63,6 @@ from .entities import (
     handle_get_params,
     handle_list_entities,
     handle_remove_entity,
-    handle_set_keyframe,
     handle_set_params,
 )
 from .hierarchy import (
@@ -86,6 +91,8 @@ from .node_materials import (
     handle_remove_graph_node,
     handle_set_graph_port,
 )
+from .preview_render import handle_preview_render
+from .render_data import handle_create_render_data
 from .script import (
     handle_batch,
     handle_call_command,
@@ -96,16 +103,15 @@ from .selection import (
     handle_get_selection,
     handle_set_selection,
 )
-from .shot_setup import (
-    handle_create_render_data,
+from .tags import handle_assign_material
+from .takes import (
     handle_create_take,
-    handle_import_scene,
-    handle_sample_transform,
-    handle_set_document,
     handle_take_override,
 )
-from .tags import handle_assign_material
-from .transform import handle_set_transform
+from .transform import (
+    handle_sample_transform,
+    handle_set_transform,
+)
 from .user_data import (
     handle_add_user_data,
     handle_list_user_data,

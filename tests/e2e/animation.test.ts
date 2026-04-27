@@ -9,7 +9,7 @@ const probe = await probeBridge("animation");
 const ready = probe.ready;
 const client: MCPTestClient | null = probe.client ?? null;
 
-describe.skipIf(!ready)("animation (read)", () => {
+describe.skipIf(!ready)("animation", () => {
   const c = client!;
 
   afterAll(async () => {
@@ -192,5 +192,21 @@ describe.skipIf(!ready)("animation (read)", () => {
     });
     const frames = r.keys.map((k) => k.frame).toSorted((a, b) => a - b);
     expect(frames).toEqual([10, 20]);
+  });
+
+  test("set_keyframe on rotation component creates a track", async () => {
+    const name = testName("kf_target");
+    await c.call("create_entity", { kind: "object", type_id: "cube", name });
+    const r = await c.call<{ frame: number; dtype: string; value: number }>("set_keyframe", {
+      handle: { kind: "object", name },
+      param_id: PARAM_REL_ROTATION,
+      component: "x",
+      frame: 10,
+      value: 0.5,
+      interp: "linear",
+    });
+    expect(r.frame).toBe(10);
+    expect(r.value).toBe(0.5);
+    expect(r.dtype).toBe("vector");
   });
 });

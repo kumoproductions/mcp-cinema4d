@@ -137,22 +137,6 @@ describe.skipIf(!ready)("entities + handles", () => {
     expect(Object.keys(narrow.container!).length).toBe(0);
   });
 
-  test("set_keyframe on rotation component creates a track", async () => {
-    const name = testName("kf_target");
-    await c.call("create_entity", { kind: "object", type_id: "cube", name });
-    const r = await c.call<{ frame: number; dtype: string; value: number }>("set_keyframe", {
-      handle: { kind: "object", name },
-      param_id: 904, // ID_BASEOBJECT_REL_ROTATION
-      component: "x",
-      frame: 10,
-      value: 0.5,
-      interp: "linear",
-    });
-    expect(r.frame).toBe(10);
-    expect(r.value).toBe(0.5);
-    expect(r.dtype).toBe("vector");
-  });
-
   test("name ambiguity: duplicate name lookups raise with candidate paths", async () => {
     // Create two objects with the same name using create_entity + path.
     const dup = testName("dup");

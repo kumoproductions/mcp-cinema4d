@@ -3,7 +3,7 @@
 Aggregates the fields an LLM typically asks for when orienting itself
 (fps / frame range / current frame / active camera / active take / active
 render data / document name & path). The companion mutator is
-``set_document`` (see shot_setup.py) which writes a subset of these fields.
+``set_document`` (in document_io.py) which writes a subset of these fields.
 """
 
 from __future__ import annotations

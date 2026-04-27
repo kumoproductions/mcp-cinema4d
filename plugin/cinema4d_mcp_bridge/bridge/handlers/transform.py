@@ -1,10 +1,13 @@
-"""Transform handler: ``set_transform``.
+"""Transform handlers: ``set_transform`` (write) and ``sample_transform`` (read).
 
-Unified setter for pos / rot / scale / matrix. Mirrors the SDK's
-``obj.SetRelPos/Rot/Scale`` or ``obj.SetMl/SetMg`` — callers pick ``space``
-("local" vs "global") and supply either decomposed parts or a full 4x3
-matrix. Matrix + any of pos/rot/scale in the same call is rejected (they
-would silently overwrite each other).
+``set_transform`` is a unified setter for pos / rot / scale / matrix —
+callers pick ``space`` ("local" vs "global") and supply either decomposed
+parts or a full 4x3 matrix. Matrix + any of pos/rot/scale in the same call
+is rejected (they would silently overwrite each other).
+
+``sample_transform`` evaluates the scene at a list of frames and returns
+the object's transform per frame; it's the read-side counterpart used to
+verify rigs / takes / animation without round-tripping through the editor.
 """
 
 from __future__ import annotations
@@ -141,4 +144,78 @@ def handle_set_transform(params: dict[str, Any]) -> dict[str, Any]:
             "scale": [final_scale.x, final_scale.y, final_scale.z],
             "matrix": _matrix_rows(final),
         },
+    }
+
+
+def handle_sample_transform(params: dict[str, Any]) -> dict[str, Any]:
+    """Evaluate the scene at each requested frame and sample an object's transform.
+
+    params:
+      handle:  object handle (required) — must resolve to a BaseObject
+      frames:  list[int] of frames to sample (required, 1..500)
+      fps:     optional override (default: doc fps)
+      space:   "global" (default) | "local"
+      format:  "off_rot" (default) — returns pos+rot(HPB radians)
+               "matrix"           — returns 4x3 matrix rows
+      restore_time: bool (default true)
+    """
+    h = params.get("handle")
+    frames = params.get("frames")
+    if not h:
+        raise ValueError("handle required")
+    if not isinstance(frames, (list, tuple)) or not frames:
+        raise ValueError("frames must be a non-empty list")
+    if len(frames) > 500:
+        raise ValueError("frames list capped at 500 entries")
+
+    obj = _resolve_handle(h)
+    if obj is None or not isinstance(obj, c4d.BaseObject):
+        raise ValueError(f"handle must resolve to a BaseObject, got {type(obj).__name__}")
+
+    doc = documents.GetActiveDocument()
+    if doc is None:
+        raise RuntimeError("no active document")
+
+    fps = int(params.get("fps") or doc.GetFps())
+    space = str(params.get("space", "global")).lower()
+    fmt = str(params.get("format", "off_rot")).lower()
+    if space not in ("global", "local"):
+        raise ValueError("space must be 'global' or 'local'")
+    if fmt not in ("off_rot", "matrix"):
+        raise ValueError("format must be 'off_rot' or 'matrix'")
+    restore_time = bool(params.get("restore_time", True))
+    original_time = doc.GetTime()
+
+    samples: list[dict[str, Any]] = []
+    try:
+        for raw in frames:
+            f = int(raw)
+            doc.SetTime(c4d.BaseTime(f, fps))
+            doc.ExecutePasses(None, True, True, True, c4d.BUILDFLAGS_NONE)
+            m = obj.GetMg() if space == "global" else obj.GetMl()
+            entry: dict[str, Any] = {"frame": f}
+            if fmt == "matrix":
+                entry["matrix"] = [
+                    [m.off.x, m.off.y, m.off.z],
+                    [m.v1.x, m.v1.y, m.v1.z],
+                    [m.v2.x, m.v2.y, m.v2.z],
+                    [m.v3.x, m.v3.y, m.v3.z],
+                ]
+            else:
+                pos = m.off
+                rot = c4d_utils.MatrixToHPB(m, c4d.ROTATIONORDER_HPB)
+                entry["pos"] = [pos.x, pos.y, pos.z]
+                entry["rot"] = [rot.x, rot.y, rot.z]
+            samples.append(entry)
+    finally:
+        if restore_time:
+            doc.SetTime(original_time)
+            doc.ExecutePasses(None, True, True, True, c4d.BUILDFLAGS_NONE)
+
+    return {
+        "handle": h,
+        "space": space,
+        "format": fmt,
+        "fps": fps,
+        "samples": samples,
     }

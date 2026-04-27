@@ -1,9 +1,11 @@
-"""Animation read handlers: list_tracks, get_keyframes.
+"""Animation handlers: list_tracks, get_keyframes, set_keyframe, delete_keyframe, delete_track.
 
-Provides inspection-side coverage to complement ``set_keyframe``. Decodes
-CTrack DescIDs into the same ``param_id`` / ``component`` shape the setter
-accepts, so callers can round-trip (list → read → write) without juggling
-raw DescLevel objects.
+Track listing and key reads decode CTrack DescIDs into the same
+``param_id`` / ``component`` shape the setter accepts, so callers can
+round-trip (list → read → write) without juggling raw DescLevel objects.
+
+``set_keyframe`` adds or updates a keyframe on a (param_id, component)
+tuple, inferring the dtype from the object's description by default.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from typing import Any
 import c4d
 from c4d import documents
 
-from ._helpers import _resolve_handle
+from ._helpers import _param_dtype, _resolve_handle
 
 _DTYPE_NAMES: dict[int, str] = {
     c4d.DTYPE_REAL: "real",
@@ -248,6 +250,138 @@ def handle_delete_keyframe(params: dict[str, Any]) -> dict[str, Any]:
     return {
         "removed": removed,
         "track": _describe_track(track),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Keyframe writes
+# ---------------------------------------------------------------------------
+
+_KEYFRAME_VECTOR_COMPONENTS = {"x": 0, "y": 1, "z": 2}
+
+
+def _pick_keyframe_dtype(declared: int | None, component: str | None) -> int:
+    """Pick the DescID dtype for a keyframe based on description and component."""
+    if component is not None:
+        return c4d.DTYPE_VECTOR
+    if declared is None:
+        return c4d.DTYPE_REAL
+    if declared in (c4d.DTYPE_LONG, c4d.DTYPE_BOOL, c4d.DTYPE_REAL, c4d.DTYPE_VECTOR):
+        return declared
+    return c4d.DTYPE_REAL
+
+
+def handle_set_keyframe(params: dict[str, Any]) -> dict[str, Any]:
+    """Add or update a keyframe on the resolved entity's parameter.
+
+    Supports scalar (REAL/LONG/BOOL) and vector (x/y/z) parameters. The dtype
+    is inferred from the object's description; pass ``dtype`` explicitly to
+    override (e.g. ``"long"`` for enum-backed params).
+
+    params:
+      handle:    target
+      param_id:  top-level description id (int)
+      component: "x" | "y" | "z" | null   (sub-component for vector params)
+      frame:     frame number (int)
+      value:     new value (number or bool)
+      fps:       optional override for time base (default: doc fps)
+      interp:    "linear" | "spline" | "step"  (default "spline")
+      dtype:     optional override: "real" | "long" | "bool" | "vector"
+    """
+    h = params.get("handle")
+    pid = params.get("param_id")
+    comp = params.get("component")
+    frame = params.get("frame")
+    value = params.get("value")
+    fps = params.get("fps")
+    interp_name = params.get("interp", "spline")
+    dtype_name = params.get("dtype")
+
+    if not h:
+        raise ValueError("handle required")
+    if pid is None:
+        raise ValueError("param_id required")
+    if frame is None:
+        raise ValueError("frame required")
+    if value is None:
+        raise ValueError("value required")
+
+    obj = _resolve_handle(h)
+    if obj is None:
+        raise ValueError(f"handle not resolved: {h}")
+
+    doc = documents.GetActiveDocument()
+    if fps is None:
+        fps = doc.GetFps()
+
+    # Resolve the parameter dtype from description unless overridden.
+    dtype_overrides = {
+        "real": c4d.DTYPE_REAL,
+        "long": c4d.DTYPE_LONG,
+        "bool": c4d.DTYPE_BOOL,
+        "vector": c4d.DTYPE_VECTOR,
+    }
+    if dtype_name is not None:
+        if dtype_name not in dtype_overrides:
+            raise ValueError(f"dtype must be one of {sorted(dtype_overrides)}, got {dtype_name!r}")
+        declared = dtype_overrides[dtype_name]
+    else:
+        declared = _param_dtype(obj, int(pid))
+
+    effective_dtype = _pick_keyframe_dtype(declared, comp)
+
+    if comp is None:
+        did = c4d.DescID(c4d.DescLevel(int(pid), effective_dtype, 0))
+    else:
+        if comp not in _KEYFRAME_VECTOR_COMPONENTS:
+            raise ValueError(f"component must be x/y/z or null, got {comp!r}")
+        cm = {"x": c4d.VECTOR_X, "y": c4d.VECTOR_Y, "z": c4d.VECTOR_Z}
+        did = c4d.DescID(
+            c4d.DescLevel(int(pid), c4d.DTYPE_VECTOR, 0),
+            c4d.DescLevel(cm[comp], c4d.DTYPE_REAL, 0),
+        )
+
+    im = {
+        "linear": c4d.CINTERPOLATION_LINEAR,
+        "spline": c4d.CINTERPOLATION_SPLINE,
+        "step": c4d.CINTERPOLATION_STEP,
+    }
+    if interp_name not in im:
+        raise ValueError(f"interp must be linear/spline/step, got {interp_name!r}")
+
+    # Coerce the value to the underlying curve's expected scalar type.
+    if effective_dtype == c4d.DTYPE_BOOL:
+        coerced_value = 1.0 if bool(value) else 0.0
+    elif effective_dtype == c4d.DTYPE_LONG:
+        coerced_value = float(int(value))
+    else:
+        coerced_value = float(value)
+
+    doc.StartUndo()
+    try:
+        track = obj.FindCTrack(did)
+        if track is None:
+            track = c4d.CTrack(obj, did)
+            obj.InsertTrackSorted(track)
+        curve = track.GetCurve()
+        kd = curve.AddKey(c4d.BaseTime(int(frame), int(fps)))
+        key = kd["key"] if isinstance(kd, dict) else kd
+        key.SetValue(curve, coerced_value)
+        key.SetInterpolation(curve, im[interp_name])
+    finally:
+        doc.EndUndo()
+    c4d.EventAdd()
+    return {
+        "handle": h,
+        "frame": int(frame),
+        "value": coerced_value,
+        "interp": interp_name,
+        "dtype": {
+            c4d.DTYPE_REAL: "real",
+            c4d.DTYPE_LONG: "long",
+            c4d.DTYPE_BOOL: "bool",
+            c4d.DTYPE_VECTOR: "vector",
+        }.get(effective_dtype, str(effective_dtype)),
     }
 
 

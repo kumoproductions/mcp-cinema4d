@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, beforeEach, describe, expect, test } from "vitest";
 import { cleanupByPrefix, MCPTestClient, probeBridge, resetScene, testName } from "./harness.js";
 
+const OCAMERA = 5103; // c4d.Ocamera
 const OCUBE = 5159;
 
 const probe = await probeBridge("document_io");
@@ -12,7 +13,7 @@ const client: MCPTestClient | null = probe.client ?? null;
 
 const workDir = ready ? mkdtempSync(path.join(tmpdir(), "c4d_mcp_docio_")) : "";
 
-describe.skipIf(!ready)("document I/O (save/open/new)", () => {
+describe.skipIf(!ready)("document I/O (save/open/new/import + set_document)", () => {
   const c = client!;
 
   afterAll(async () => {
@@ -114,5 +115,48 @@ describe.skipIf(!ready)("document I/O (save/open/new)", () => {
       name_pattern: `^${srcName}$`,
     });
     expect(scene1.entities.map((o) => o.name)).toContain(srcName);
+  });
+
+  // ---------------------------------------------------------------------------
+  // set_document
+  // ---------------------------------------------------------------------------
+
+  test("set_document updates fps and mirrors to active render data", async () => {
+    const r = await c.call<{ updated: Record<string, unknown> }>("set_document", {
+      fps: 30,
+      frame_start: 0,
+      frame_end: 24,
+    });
+    expect(r.updated.fps).toBe(30);
+    expect(r.updated.frame_start).toBe(0);
+    expect(r.updated.frame_end).toBe(24);
+  });
+
+  test("set_document active_take switches the current take", async () => {
+    const cam = testName("sd_cam");
+    const takeA = testName("sd_A");
+    const takeB = testName("sd_B");
+    await c.call("create_entity", { kind: "object", type_id: OCAMERA, name: cam });
+    await c.call("create_take", { name: takeA, camera: cam });
+    await c.call("create_take", { name: takeB, camera: cam });
+
+    const r = await c.call<{ updated: { active_take?: string } }>("set_document", {
+      active_take: takeB,
+    });
+    expect(r.updated.active_take).toBe(takeB);
+
+    const takes = await c.call<{ entities: Array<{ name: string; is_active: boolean }> }>(
+      "list_entities",
+      { kind: "take" },
+    );
+    const active = takes.entities.find((t) => t.is_active);
+    expect(active?.name).toBe(takeB);
+  });
+
+  test("set_document active_take rejects an unknown take", async () => {
+    const err = await c.callExpectError("set_document", {
+      active_take: testName("sd_missing"),
+    });
+    expect(err).toMatch(/take not found/i);
   });
 });
