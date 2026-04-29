@@ -58,6 +58,46 @@ describe.skipIf(!ready)("takes", () => {
   });
 
   // -------------------------------------------------------------------------
+  // child takes: parent + listing
+  // -------------------------------------------------------------------------
+
+  test("create_take with parent nests under the parent take", async () => {
+    const parent = testName("tparent");
+    const child = testName("tchild");
+    await c.call("create_take", { name: parent });
+    const r = await c.call<{
+      created: boolean;
+      handle: { name: string };
+    }>("create_take", { name: child, parent });
+    expect(r.created).toBe(true);
+    expect(r.handle.name).toBe(child);
+
+    const listed = await c.call<{
+      entities: Array<{ name: string; depth: number; parent: string | null }>;
+    }>("list_entities", { kind: "take", name_pattern: `^e2e_t(parent|child)$` });
+    const byName = new Map(listed.entities.map((e) => [e.name, e]));
+    expect(byName.get(parent)?.depth).toBe(1); // parent is one below Main
+    expect(byName.get(child)?.depth).toBe(2);
+    expect(byName.get(child)?.parent).toBe(parent);
+  });
+
+  test("list_entities take exposes the Main take with parent=null", async () => {
+    const main = await mainTakeName();
+    const listed = await c.call<{
+      entities: Array<{
+        name: string;
+        is_main: boolean;
+        depth: number;
+        parent: string | null;
+      }>;
+    }>("list_entities", { kind: "take", name_pattern: `^${main}$` });
+    expect(listed.entities.length).toBe(1);
+    expect(listed.entities[0].is_main).toBe(true);
+    expect(listed.entities[0].depth).toBe(0);
+    expect(listed.entities[0].parent).toBe(null);
+  });
+
+  // -------------------------------------------------------------------------
   // take_override
   // -------------------------------------------------------------------------
 

@@ -241,12 +241,23 @@ def _find_render_data(name: str):
     doc = documents.GetActiveDocument()
     if doc is None:
         return None
-    r = doc.GetFirstRenderData()
-    while r is not None:
-        if r.GetName() == name:
-            return r
-        r = r.GetNext()
-    return None
+
+    # RenderData is a tree (doc.GetFirstRenderData() returns the first root, then
+    # GetDown/GetNext form the children/siblings). Old code only walked siblings,
+    # so child RenderData were unreachable by name.
+    def walk(r):
+        while r is not None:
+            if r.GetName() == name:
+                return r
+            d = r.GetDown()
+            if d is not None:
+                hit = walk(d)
+                if hit is not None:
+                    return hit
+            r = r.GetNext()
+        return None
+
+    return walk(doc.GetFirstRenderData())
 
 
 def _find_take(name: str):

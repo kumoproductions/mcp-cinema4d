@@ -9,6 +9,10 @@ export const createRenderDataTool = defineTool({
     "Create (or update-if-exists) a RenderData with resolution / renderer / fps / frame range in one call. Returns the render_data handle for subsequent create_take / set_params chaining.",
   inputShape: {
     name: z.string().describe("Render data name (used as handle)."),
+    parent: z
+      .string()
+      .optional()
+      .describe("Parent render_data name to nest under (default: top level)."),
     width: z.number().int().positive().optional().describe("Output width (pixels)."),
     height: z.number().int().positive().optional().describe("Output height (pixels)."),
     renderer: z

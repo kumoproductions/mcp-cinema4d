@@ -72,10 +72,10 @@ Active selection read / write.
 
 Reparent, reorder, clone.
 
-| Tool           | Description                                                                                                  |
-| -------------- | ------------------------------------------------------------------------------------------------------------ |
-| `move_entity`  | Reparent an object under a new parent, promote it to the document root, or reorder it relative to a sibling. |
-| `clone_entity` | Duplicate an entity.                                                                                         |
+| Tool           | Description                                                                                                      |
+| -------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `move_entity`  | Reparent a node under a new parent, promote it to the top of its hierarchy, or reorder it relative to a sibling. |
+| `clone_entity` | Duplicate an entity.                                                                                             |
 
 ## Modeling
 

@@ -34,22 +34,44 @@ def _resolve_object_or_raise(h: Any, what: str) -> c4d.BaseObject:
     return obj
 
 
+def _resolve_movable_or_raise(h: Any, what: str, expected_type: type) -> Any:
+    """Resolve a handle and assert its concrete type for hierarchy moves.
+
+    Used by ``move_entity`` to keep takes and render_data moves homogeneous —
+    you can't drop a take under a render_data, etc.
+    """
+    node = _resolve_handle(h)
+    if node is None:
+        raise ValueError(f"{what} not resolved: {h}")
+    if not isinstance(node, expected_type):
+        raise ValueError(f"{what} did not resolve to a {expected_type.__name__}: {h}")
+    return node
+
+
 def handle_move_entity(params: dict[str, Any]) -> dict[str, Any]:
-    """Reparent or reorder an object in the scene hierarchy.
+    """Reparent or reorder a node in the scene, take, or render_data hierarchy.
 
     Exactly one destination field must be provided:
-      parent:  handle — insert as the last child of this object
+      parent:  handle — insert as the last child of this node
       before:  handle — place immediately before this sibling
       after:   handle — place immediately after this sibling
-      to_root: bool   — promote to the document root
+      to_root: bool   — promote to the top of the hierarchy
+                        (objects: doc root; takes: under Main; render_data: top level)
+
+    The handle's kind decides the hierarchy:
+      object       — c4d.BaseObject parent/sibling required
+      take         — c4d.BaseTake parent/sibling required; Main cannot be moved
+      render_data  — c4d.documents.RenderData parent/sibling required
 
     params:
-      handle:  target object
+      handle:  target node
     """
     h = params.get("handle")
     if not h:
         raise ValueError("handle required")
-    obj = _resolve_object_or_raise(h, "handle")
+    node = _resolve_handle(h)
+    if node is None:
+        raise ValueError(f"handle not resolved: {h}")
 
     parent_h = params.get("parent")
     before_h = params.get("before")
@@ -66,6 +88,16 @@ def handle_move_entity(params: dict[str, Any]) -> dict[str, Any]:
     if doc is None:
         raise RuntimeError("no active document")
 
+    if isinstance(node, c4d.BaseObject):
+        return _move_object(doc, node, parent_h, before_h, after_h, to_root)
+    if isinstance(node, c4d.modules.takesystem.BaseTake):
+        return _move_take(doc, node, parent_h, before_h, after_h, to_root)
+    if isinstance(node, c4d.documents.RenderData):
+        return _move_render_data(doc, node, parent_h, before_h, after_h, to_root)
+    raise ValueError(f"move_entity does not support {type(node).__name__}")
+
+
+def _move_object(doc, obj, parent_h, before_h, after_h, to_root) -> dict[str, Any]:
     doc.StartUndo()
     try:
         doc.AddUndo(c4d.UNDOTYPE_HIERARCHY_PSR, obj)
@@ -93,10 +125,91 @@ def handle_move_entity(params: dict[str, Any]) -> dict[str, Any]:
     finally:
         doc.EndUndo()
     c4d.EventAdd()
-
     return {
         "handle": {"kind": "object", "path": _object_path(obj), "name": obj.GetName()},
         "summary": _summary(obj),
+    }
+
+
+def _move_take(doc, take, parent_h, before_h, after_h, to_root) -> dict[str, Any]:
+    if take.IsMain():
+        raise ValueError("cannot move the Main take")
+    td = doc.GetTakeData()
+    if td is None:
+        raise RuntimeError("take data unavailable")
+    BaseTake = c4d.modules.takesystem.BaseTake
+
+    doc.StartUndo()
+    try:
+        doc.AddUndo(c4d.UNDOTYPE_HIERARCHY_PSR, take)
+        if to_root:
+            # "Root" of the take hierarchy is the Main take.
+            take.Remove()
+            take.InsertUnder(td.GetMainTake())
+        elif parent_h is not None:
+            parent = _resolve_movable_or_raise(parent_h, "parent", BaseTake)
+            if parent is take:
+                raise ValueError("cannot reparent a take under itself")
+            take.Remove()
+            take.InsertUnder(parent)
+        elif before_h is not None:
+            sib = _resolve_movable_or_raise(before_h, "before", BaseTake)
+            if sib is take:
+                raise ValueError("'before' sibling must differ from the moved take")
+            if sib.IsMain():
+                raise ValueError("cannot place a take before Main")
+            take.Remove()
+            take.InsertBefore(sib)
+        else:
+            sib = _resolve_movable_or_raise(after_h, "after", BaseTake)
+            if sib is take:
+                raise ValueError("'after' sibling must differ from the moved take")
+            take.Remove()
+            take.InsertAfter(sib)
+    finally:
+        doc.EndUndo()
+    c4d.EventAdd()
+    return {
+        "handle": {"kind": "take", "name": take.GetName()},
+        "summary": _summary(take),
+    }
+
+
+def _move_render_data(doc, rd, parent_h, before_h, after_h, to_root) -> dict[str, Any]:
+    RenderData = c4d.documents.RenderData
+
+    doc.StartUndo()
+    try:
+        doc.AddUndo(c4d.UNDOTYPE_HIERARCHY_PSR, rd)
+        if to_root:
+            # Top level for render_data: Remove from current position, then
+            # InsertRenderData re-registers it as a top-level sibling.
+            rd.Remove()
+            doc.InsertRenderData(rd)
+        elif parent_h is not None:
+            parent = _resolve_movable_or_raise(parent_h, "parent", RenderData)
+            if parent is rd:
+                raise ValueError("cannot reparent a render_data under itself")
+            rd.Remove()
+            rd.InsertUnder(parent)
+        elif before_h is not None:
+            sib = _resolve_movable_or_raise(before_h, "before", RenderData)
+            if sib is rd:
+                raise ValueError("'before' sibling must differ from the moved render_data")
+            rd.Remove()
+            rd.InsertBefore(sib)
+        else:
+            sib = _resolve_movable_or_raise(after_h, "after", RenderData)
+            if sib is rd:
+                raise ValueError("'after' sibling must differ from the moved render_data")
+            rd.Remove()
+            rd.InsertAfter(sib)
+    finally:
+        doc.EndUndo()
+    c4d.EventAdd()
+    return {
+        "handle": {"kind": "render_data", "name": rd.GetName()},
+        "summary": _summary(rd),
     }
 
 
@@ -117,6 +230,7 @@ def handle_clone_entity(params: dict[str, Any]) -> dict[str, Any]:
                tag / shader clone: required owner
                video_post clone: optional target render_data (defaults to source's)
                take clone: optional parent take (defaults to source's parent)
+               render_data clone: optional parent render_data (defaults to top level)
     """
     h = params.get("handle")
     if not h:
@@ -181,6 +295,16 @@ def handle_clone_entity(params: dict[str, Any]) -> dict[str, Any]:
     try:
         if src_kind == "render_data" or isinstance(clone, c4d.documents.RenderData):
             doc.InsertRenderData(clone)
+            if parent_h:
+                if isinstance(parent_h, dict) and parent_h.get("kind") == "render_data":
+                    parent_rd = _find_render_data(parent_h["name"])
+                elif isinstance(parent_h, str):
+                    parent_rd = _find_render_data(parent_h)
+                else:
+                    raise ValueError("render_data parent must be render_data handle or name")
+                if parent_rd is None:
+                    raise ValueError(f"parent render_data not found: {parent_h}")
+                clone.InsertUnder(parent_rd)
             doc.AddUndo(c4d.UNDOTYPE_NEW, clone)
             handle = {"kind": "render_data", "name": clone.GetName()}
         elif src_kind == "video_post" or isinstance(clone, c4d.documents.BaseVideoPost):

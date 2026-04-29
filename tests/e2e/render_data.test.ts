@@ -54,4 +54,71 @@ describe.skipIf(!ready)("render_data", () => {
     });
     expect(second.created).toBe(false);
   });
+
+  test("create_render_data nests under an existing parent render_data", async () => {
+    const parent = testName("rd_parent");
+    const child = testName("rd_child");
+    await c.call("create_render_data", { name: parent });
+    const r = await c.call<{ created: boolean; handle: { name: string } }>("create_render_data", {
+      name: child,
+      parent,
+    });
+    expect(r.created).toBe(true);
+    expect(r.handle.name).toBe(child);
+
+    const listed = await c.call<{
+      entities: Array<{ name: string; depth: number; parent: string | null }>;
+    }>("list_entities", { kind: "render_data", name_pattern: "^e2e_rd_(parent|child)$" });
+    const byName = new Map(listed.entities.map((e) => [e.name, e]));
+    expect(byName.get(parent)?.depth).toBe(0);
+    expect(byName.get(parent)?.parent).toBe(null);
+    expect(byName.get(child)?.depth).toBe(1);
+    expect(byName.get(child)?.parent).toBe(parent);
+  });
+
+  test("create_render_data with unknown parent rejects clearly", async () => {
+    const err = await c.callExpectError("create_render_data", {
+      name: testName("rd_orphan"),
+      parent: testName("rd_404_parent"),
+    });
+    expect(err).toMatch(/parent render_data not found/i);
+  });
+
+  test("child render_data resolves by name and accepts param updates", async () => {
+    const parent = testName("rd_p_ref");
+    const child = testName("rd_c_ref");
+    await c.call("create_render_data", { name: parent });
+    await c.call("create_render_data", { name: child, parent });
+
+    // _find_render_data must walk the tree, not just the top-level siblings.
+    const r = await c.call<{ created: boolean }>("create_render_data", {
+      name: child,
+      width: 1280,
+      height: 720,
+      update_if_exists: true,
+    });
+    expect(r.created).toBe(false);
+  });
+
+  test("clone_entity on render_data accepts a parent and nests the copy", async () => {
+    const root = testName("rd_clone_root");
+    const src = testName("rd_clone_src");
+    const dst = testName("rd_clone_dst");
+    await c.call("create_render_data", { name: root });
+    await c.call("create_render_data", { name: src });
+
+    const r = await c.call<{ handle: { kind: string; name: string } }>("clone_entity", {
+      handle: { kind: "render_data", name: src },
+      name: dst,
+      parent: { kind: "render_data", name: root },
+    });
+    expect(r.handle.name).toBe(dst);
+
+    const listed = await c.call<{
+      entities: Array<{ name: string; parent: string | null; depth: number }>;
+    }>("list_entities", { kind: "render_data", name_pattern: `^${dst}$` });
+    expect(listed.entities.length).toBe(1);
+    expect(listed.entities[0].parent).toBe(root);
+    expect(listed.entities[0].depth).toBe(1);
+  });
 });

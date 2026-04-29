@@ -98,6 +98,120 @@ describe.skipIf(!ready)("hierarchy (move/clone)", () => {
   });
 
   // ---------------------------------------------------------------------
+  // move_entity — takes
+  // ---------------------------------------------------------------------
+
+  test("move_entity reparents a take under another take", async () => {
+    const parent = testName("mvT_parent");
+    const child = testName("mvT_child");
+    await c.call("create_take", { name: parent });
+    await c.call("create_take", { name: child });
+
+    const r = await c.call<{ handle: { kind: string; name: string } }>("move_entity", {
+      handle: { kind: "take", name: child },
+      parent: { kind: "take", name: parent },
+    });
+    expect(r.handle.kind).toBe("take");
+
+    const listed = await c.call<{
+      entities: Array<{ name: string; parent: string | null }>;
+    }>("list_entities", { kind: "take", name_pattern: `^${child}$` });
+    expect(listed.entities[0].parent).toBe(parent);
+  });
+
+  test("move_entity to_root reparents a take under Main", async () => {
+    const parent = testName("mvTroot_parent");
+    const child = testName("mvTroot_child");
+    await c.call("create_take", { name: parent });
+    await c.call("create_take", { name: child, parent });
+
+    await c.call("move_entity", {
+      handle: { kind: "take", name: child },
+      to_root: true,
+    });
+
+    const listed = await c.call<{
+      entities: Array<{ name: string; parent: string | null; is_main: boolean }>;
+    }>("list_entities", { kind: "take", name_pattern: `^${child}$` });
+    expect(listed.entities[0].is_main).toBe(false);
+    // Main's name is locale-dependent, so we just assert the parent is the
+    // (single) main take rather than hard-coding "Main".
+    const main = await c.call<{
+      entities: Array<{ name: string; is_main: boolean }>;
+    }>("list_entities", { kind: "take" });
+    const mainName = main.entities.find((e) => e.is_main)?.name;
+    expect(listed.entities[0].parent).toBe(mainName);
+  });
+
+  test("move_entity rejects moving the Main take", async () => {
+    const main = await c.call<{ entities: Array<{ name: string; is_main: boolean }> }>(
+      "list_entities",
+      { kind: "take" },
+    );
+    const mainName = main.entities.find((e) => e.is_main)!.name;
+    const sib = testName("mvT_sibling");
+    await c.call("create_take", { name: sib });
+    const err = await c.callExpectError("move_entity", {
+      handle: { kind: "take", name: mainName },
+      after: { kind: "take", name: sib },
+    });
+    expect(err).toMatch(/main take/i);
+  });
+
+  // ---------------------------------------------------------------------
+  // move_entity — render_data
+  // ---------------------------------------------------------------------
+
+  test("move_entity reparents a render_data under another render_data", async () => {
+    const parent = testName("mvRD_parent");
+    const child = testName("mvRD_child");
+    await c.call("create_render_data", { name: parent });
+    await c.call("create_render_data", { name: child });
+
+    await c.call("move_entity", {
+      handle: { kind: "render_data", name: child },
+      parent: { kind: "render_data", name: parent },
+    });
+
+    const listed = await c.call<{
+      entities: Array<{ name: string; parent: string | null; depth: number }>;
+    }>("list_entities", { kind: "render_data", name_pattern: `^${child}$` });
+    expect(listed.entities[0].parent).toBe(parent);
+    expect(listed.entities[0].depth).toBe(1);
+  });
+
+  test("move_entity to_root promotes a child render_data to top level", async () => {
+    const parent = testName("mvRDroot_p");
+    const child = testName("mvRDroot_c");
+    await c.call("create_render_data", { name: parent });
+    await c.call("create_render_data", { name: child, parent });
+
+    await c.call("move_entity", {
+      handle: { kind: "render_data", name: child },
+      to_root: true,
+    });
+
+    const listed = await c.call<{
+      entities: Array<{ name: string; parent: string | null; depth: number }>;
+    }>("list_entities", { kind: "render_data", name_pattern: `^${child}$` });
+    expect(listed.entities[0].parent).toBe(null);
+    expect(listed.entities[0].depth).toBe(0);
+  });
+
+  test("move_entity rejects mismatched kinds", async () => {
+    const t = testName("mix_take");
+    const rd = testName("mix_rd");
+    await c.call("create_take", { name: t });
+    await c.call("create_render_data", { name: rd });
+
+    const err = await c.callExpectError("move_entity", {
+      handle: { kind: "take", name: t },
+      parent: { kind: "render_data", name: rd },
+    });
+    expect(err).toMatch(/BaseTake|RenderData|did not resolve/i);
+  });
+
+  // ---------------------------------------------------------------------
   // clone_entity
   // ---------------------------------------------------------------------
 

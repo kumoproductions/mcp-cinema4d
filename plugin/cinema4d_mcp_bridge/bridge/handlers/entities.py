@@ -113,10 +113,23 @@ def handle_list_entities(params: dict[str, Any]) -> dict[str, Any]:
     if kind == "render_data":
         out = []
         active = doc.GetActiveRenderData()
-        r = doc.GetFirstRenderData()
-        while r is not None:
-            out.append({"name": r.GetName(), "is_active": r == active})
-            r = r.GetNext()
+
+        def walk_rd(r, depth=0, parent=None):
+            while r is not None:
+                out.append(
+                    {
+                        "name": r.GetName(),
+                        "is_active": r == active,
+                        "depth": depth,
+                        "parent": parent,
+                    }
+                )
+                d = r.GetDown()
+                if d is not None:
+                    walk_rd(d, depth + 1, r.GetName())
+                r = r.GetNext()
+
+        walk_rd(doc.GetFirstRenderData())
         return {"entities": _apply_name_pattern(out, pattern)}
 
     if kind == "take":
@@ -124,7 +137,7 @@ def handle_list_entities(params: dict[str, Any]) -> dict[str, Any]:
         out = []
         current_take = td.GetCurrentTake() if td is not None else None
 
-        def walk_take(t, depth=0):
+        def walk_take(t, depth=0, parent=None):
             rd = t.GetRenderData(td)
             cam = t.GetCamera(td)
             out.append(
@@ -133,13 +146,14 @@ def handle_list_entities(params: dict[str, Any]) -> dict[str, Any]:
                     "is_main": t.IsMain(),
                     "is_active": t == current_take,
                     "depth": depth,
+                    "parent": parent,
                     "render_data": rd.GetName() if rd else None,
                     "camera": cam.GetName() if cam else None,
                 }
             )
             c = t.GetDown()
             while c is not None:
-                walk_take(c, depth + 1)
+                walk_take(c, depth + 1, t.GetName())
                 c = c.GetNext()
 
         walk_take(td.GetMainTake())

@@ -27,6 +27,8 @@ def handle_create_render_data(params: dict[str, Any]) -> dict[str, Any]:
 
     params:
       name:              string (required)
+      parent:            string — parent RenderData name (default: top level).
+                         Lets you build nested render-preset trees.
       width, height:     int (pixels)
       renderer:          int (plugin id) or alias:
                          "octane"/"standard"/"physical"/"redshift"/"cycles"/"viewport"
@@ -46,6 +48,13 @@ def handle_create_render_data(params: dict[str, Any]) -> dict[str, Any]:
     doc = documents.GetActiveDocument()
     if doc is None:
         raise RuntimeError("no active document")
+
+    parent_name = params.get("parent")
+    parent_rd = None
+    if parent_name:
+        parent_rd = _find_render_data(str(parent_name))
+        if parent_rd is None:
+            raise ValueError(f"parent render_data not found: {parent_name}")
 
     update_if_exists = bool(params.get("update_if_exists", False))
     rd = _find_render_data(name) if update_if_exists else None
@@ -95,8 +104,16 @@ def handle_create_render_data(params: dict[str, Any]) -> dict[str, Any]:
 
         if created:
             doc.InsertRenderData(rd)
+            if parent_rd is not None:
+                # InsertRenderData lands at top level; InsertUnder rewires the
+                # GeListNode parent pointer to nest it under parent_rd.
+                rd.InsertUnder(parent_rd)
             doc.AddUndo(c4d.UNDOTYPE_NEW, rd)
         else:
+            if parent_rd is not None and rd.GetUp() is not parent_rd:
+                doc.AddUndo(c4d.UNDOTYPE_HIERARCHY_PSR, rd)
+                rd.Remove()
+                rd.InsertUnder(parent_rd)
             doc.AddUndo(c4d.UNDOTYPE_CHANGE, rd)
 
         if bool(params.get("make_active", False)):
