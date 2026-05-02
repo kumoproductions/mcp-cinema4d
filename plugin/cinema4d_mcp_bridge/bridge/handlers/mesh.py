@@ -12,6 +12,7 @@ JSON payloads from high-poly assets; callers can raise the cap per-call.
 from __future__ import annotations
 
 import contextlib
+from itertools import groupby
 from typing import Any
 
 import c4d
@@ -41,10 +42,15 @@ def handle_get_mesh(params: dict[str, Any]) -> dict[str, Any]:
       max_points:  optional int cap (default 50_000)
       max_polys:   optional int cap (default 50_000)
       include:     optional list — subset of
-                   ["normals", "selections"]; points+polygons/segments are
-                   always returned. "selections" adds ``point_selection``,
-                   ``poly_selection``, ``edge_selection`` as sorted index
-                   lists drawn from the BaseSelect components of the mesh.
+                   ["normals", "selections", "effective_materials"];
+                   points+polygons/segments are always returned.
+                   "selections" adds ``point_selection`` /
+                   ``poly_selection`` / ``edge_selection`` as sorted index
+                   lists. "effective_materials" (PolygonObject only) adds
+                   ``effective_materials: {per_polygon, by_material,
+                   no_material_count, tags_considered}`` resolving the
+                   Texture tag inheritance chain incl. restriction
+                   selections.
     """
     h = params.get("handle")
     if not h:
@@ -125,6 +131,11 @@ def handle_get_mesh(params: dict[str, Any]) -> dict[str, Any]:
     if "selections" in include:
         out.update(_collect_selections(point_obj))
 
+    if "effective_materials" in include and isinstance(point_obj, c4d.PolygonObject):
+        from .tags import compute_effective_materials_per_polygon
+
+        out["effective_materials"] = compute_effective_materials_per_polygon(point_obj)
+
     return out
 
 
@@ -165,6 +176,48 @@ def _collect_selections(point_obj: c4d.PointObject) -> dict[str, Any]:
     return out
 
 
+def _component_total_for_kind(point_obj: c4d.PointObject, kind: str) -> int:
+    """Total number of components addressable on this object for ``kind``.
+
+    Point selection: ``GetPointCount()``. Polygon selection:
+    ``GetPolygonCount()``. Edge selection: ``GetPolygonCount() * 4`` — C4D's
+    edge index space is per-polygon-edge (0..3 within each polygon).
+    """
+    if kind == "point":
+        return point_obj.GetPointCount()
+    if not isinstance(point_obj, c4d.PolygonObject):
+        raise ValueError(f"{kind} selection requires a PolygonObject")
+    if kind == "polygon":
+        return point_obj.GetPolygonCount()
+    return point_obj.GetPolygonCount() * 4
+
+
+def _runs_from_sorted_indices(sorted_indices: list[int]) -> list[tuple[int, int]]:
+    """Run-length compress a sorted list of ints into (start, end) ranges.
+
+    Per-index ``BaseSelect.Select(i)`` is one C call per index — at 50k+
+    points the Python-side loop alone burns multiple seconds.
+    ``BaseSelect.SelectAll(start, end)`` covers a contiguous run in a
+    single call, so compressing first and issuing one SelectAll per run
+    delivers ~10x speedup on dense selections.
+    """
+    runs: list[tuple[int, int]] = []
+    for _, group in groupby(enumerate(sorted_indices), key=lambda iv: iv[1] - iv[0]):
+        chunk = [v for _, v in group]
+        runs.append((chunk[0], chunk[-1]))
+    return runs
+
+
+def _select_runs(sel: c4d.BaseSelect, runs: list[tuple[int, int]]) -> None:
+    """Apply pre-compressed (start, end) ranges to a BaseSelect.
+
+    ``SelectAll(i, i)`` is valid for single-index runs (verified on 2026),
+    so no branching is needed.
+    """
+    for start, end in runs:
+        sel.SelectAll(int(start), int(end))
+
+
 def handle_set_mesh_selection(params: dict[str, Any]) -> dict[str, Any]:
     """Overwrite point / polygon / edge selection on an editable mesh.
 
@@ -172,14 +225,29 @@ def handle_set_mesh_selection(params: dict[str, Any]) -> dict[str, Any]:
       handle:    target (PointObject / PolygonObject)
       kind:      "point" | "polygon" | "edge"
       indices:   list[int] to select. Existing selection is fully replaced.
+      mode:      "set" (default) — select the given indices.
+                 "set_except" — select every component EXCEPT the given indices.
+                                Useful for the split-by-deletion pattern
+                                (delete polygons NOT in keep_set) without
+                                manually computing the inverse list in the
+                                caller.
+
+    Implementation note: dense index lists are run-length compressed before
+    being applied via ``BaseSelect.SelectAll(start, end)`` instead of one
+    ``BaseSelect.Select(i)`` per index. At 50k+ polygons per mesh the
+    per-index Python call overhead dominates; this path yields a ~10x
+    speedup on contiguous selections (e.g. inverse-of-sparse-keep_set).
     """
     h = params.get("handle")
     kind = str(params.get("kind", "")).lower()
     indices = params.get("indices")
+    mode = str(params.get("mode", "set")).lower()
     if not h:
         raise ValueError("handle required")
     if kind not in ("point", "polygon", "edge"):
         raise ValueError("kind must be 'point' | 'polygon' | 'edge'")
+    if mode not in ("set", "set_except"):
+        raise ValueError("mode must be 'set' | 'set_except'")
     if not isinstance(indices, list):
         raise ValueError("indices must be a list of int")
 
@@ -191,6 +259,17 @@ def handle_set_mesh_selection(params: dict[str, Any]) -> dict[str, Any]:
     doc = documents.GetActiveDocument()
     if doc is None:
         raise RuntimeError("no active document")
+
+    sorted_indices = sorted({int(i) for i in indices})
+    if sorted_indices and sorted_indices[0] < 0:
+        raise ValueError("indices must be non-negative")
+
+    if mode == "set_except":
+        total = _component_total_for_kind(point_obj, kind)
+        keep = set(sorted_indices)
+        sorted_indices = [i for i in range(total) if i not in keep]
+
+    runs = _runs_from_sorted_indices(sorted_indices)
 
     doc.StartUndo()
     try:
@@ -207,8 +286,7 @@ def handle_set_mesh_selection(params: dict[str, Any]) -> dict[str, Any]:
             sel = point_obj.GetEdgeS()
 
         sel.DeselectAll()
-        for i in indices:
-            sel.Select(int(i))
+        _select_runs(sel, runs)
         point_obj.Message(c4d.MSG_UPDATE)
     finally:
         doc.EndUndo()
@@ -217,7 +295,9 @@ def handle_set_mesh_selection(params: dict[str, Any]) -> dict[str, Any]:
     return {
         "handle": {"kind": "object", "path": _object_path(point_obj), "name": point_obj.GetName()},
         "kind": kind,
-        "count": len(indices),
+        "mode": mode,
+        "count": len(sorted_indices),
+        "run_count": len(runs),
     }
 
 

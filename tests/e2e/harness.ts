@@ -290,3 +290,53 @@ export async function cleanupByPrefix(client: MCPTestClient): Promise<void> {
 export function testName(base: string): string {
   return `${TEST_PREFIX}${base}`;
 }
+
+/**
+ * Build a 6-polygon cube as a PolygonObject (via create_entity + set_mesh)
+ * with a unique name and no source-side ambiguity. C4D 2026's
+ * `current_state_to_object` returns a polygon with the same name as the
+ * source cube and does not delete the source — so any test that needs to
+ * reference the polygon by name afterwards trips
+ * "ambiguous (2 matches)" errors. Going through set_mesh avoids the
+ * collision entirely and is faster (no SendModelingCommand round-trip).
+ */
+export async function makeCubePolygon(
+  c: MCPTestClient,
+  name: string,
+  options: {
+    parent?: { kind: "object"; name?: string; path?: string };
+    half?: number;
+  } = {},
+): Promise<{ name: string; polys: number }> {
+  const OPOLYGON = 5100;
+  const h = options.half ?? 100;
+  const create: Record<string, unknown> = {
+    kind: "object",
+    type_id: OPOLYGON,
+    name,
+  };
+  if (options.parent) create.parent = options.parent;
+  await c.call("create_entity", create);
+  await c.call("set_mesh", {
+    handle: { kind: "object", name },
+    points: [
+      [-h, -h, -h],
+      [h, -h, -h],
+      [h, h, -h],
+      [-h, h, -h],
+      [-h, -h, h],
+      [h, -h, h],
+      [h, h, h],
+      [-h, h, h],
+    ],
+    polygons: [
+      [0, 1, 2, 3],
+      [7, 6, 5, 4],
+      [0, 4, 5, 1],
+      [3, 2, 6, 7],
+      [0, 3, 7, 4],
+      [1, 5, 6, 2],
+    ],
+  });
+  return { name, polys: 6 };
+}

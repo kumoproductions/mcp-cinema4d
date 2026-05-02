@@ -10,6 +10,7 @@ import { assignToLayerTool } from "./assign-to-layer.js";
 import { batchTool } from "./batch.js";
 import { callCommandTool } from "./call-command.js";
 import { cloneEntityTool } from "./clone-entity.js";
+import { connectPolygonObjectsTool } from "./connect-polygon-objects.js";
 import { createEntityTool } from "./create-entity.js";
 import { createLayerTool } from "./create-layer.js";
 import { createRenderDataTool } from "./create-render-data.js";
@@ -113,6 +114,7 @@ export const ALL_TOOLS: AnyTool[] = [
   cloneEntityTool,
   // Modeling
   modelingCommandTool,
+  connectPolygonObjectsTool,
   // Mesh
   getMeshTool,
   setMeshTool,

@@ -107,6 +107,9 @@ def _is_producing_command(cmd: int) -> bool:
     return cmd in producing
 
 
+_POLYGON_LOSS_TOLERANCE = 0.05
+
+
 def handle_modeling_command(params: dict[str, Any]) -> dict[str, Any]:
     """Run ``c4d.utils.SendModelingCommand`` on the resolved targets.
 
@@ -115,6 +118,14 @@ def handle_modeling_command(params: dict[str, Any]) -> dict[str, Any]:
       targets: list of object handles
       mode:    "all" (default) | "edge" | "point" | "poly"
       params:  optional {param_id: value} BaseContainer passed as ``bc``
+
+    Polygon-loss guard: when invoked with a JOIN-class command on
+    PolygonObject inputs, the handler measures total polygon count before
+    and after and raises if more than 5% of polygons silently disappear.
+    C4D 2026's SendModelingCommand(MCOMMAND_JOIN) returns one input as the
+    "merged" output instead of actually merging — without this guard the
+    bridge would forward the loss silently. Callers should prefer the
+    dedicated ``connect_polygon_objects`` tool for polygon merges.
     """
     command_arg = params.get("command")
     if command_arg is None:
@@ -138,6 +149,14 @@ def handle_modeling_command(params: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(obj, c4d.BaseObject):
             raise ValueError(f"target handle did not resolve to BaseObject: {h}")
         resolved.append(obj)
+
+    join_id = getattr(c4d, "MCOMMAND_JOIN", -2)
+    polygon_join_guard = (
+        cmd == join_id
+        and len(resolved) >= 2
+        and all(isinstance(o, c4d.PolygonObject) for o in resolved)
+    )
+    polys_in = sum(o.GetPolygonCount() for o in resolved) if polygon_join_guard else 0
 
     # SendModelingCommand in 2026 rejects ``bc=None`` — the binding wants
     # an actual BaseContainer even when no sub-params are needed. Always
@@ -226,6 +245,32 @@ def handle_modeling_command(params: dict[str, Any]) -> dict[str, Any]:
                     recovered.extend(matches)
             if recovered:
                 produced = recovered
+
+        # Polygon-loss guard for JOIN. Raising inside the try-block lets the
+        # finally below still close the undo group; the caller can then
+        # invoke `undo` to restore. We do NOT auto-undo here because the
+        # bridge protocol is a single RPC — failing loud is better than
+        # silently rolling back state the caller doesn't expect.
+        if polygon_join_guard:
+            polys_out = sum(
+                o.GetPolygonCount() for o in produced if isinstance(o, c4d.PolygonObject)
+            )
+            if polys_in > 0:
+                loss = 1.0 - (polys_out / polys_in)
+                if loss > _POLYGON_LOSS_TOLERANCE:
+                    raise RuntimeError(
+                        f"MCOMMAND_JOIN dropped polygons silently "
+                        f"(in={polys_in}, out={polys_out}, "
+                        f"loss={loss * 100:.1f}%). "
+                        "SendModelingCommand(MCOMMAND_JOIN) is broken on "
+                        "PolygonObjects in C4D 2026. Call `undo`, then use "
+                        "`connect_polygon_objects` (drops vertex attribute "
+                        "tags). For UVW / Phong preservation, look up the "
+                        "GUI 'Connect Objects + Delete' command via "
+                        '`list_plugins(plugin_type="command")` and run it '
+                        "via `call_command(command_id=<id>, "
+                        "selected_objects=[...])`."
+                    )
     finally:
         doc.EndUndo()
     c4d.EventAdd()

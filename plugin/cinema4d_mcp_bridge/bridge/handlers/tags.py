@@ -15,6 +15,31 @@ from c4d import documents
 
 from ._helpers import _find_tag, _object_path, _resolve_handle
 
+
+def _collect_polygon_selection_indices(obj: c4d.PolygonObject, selection_name: str) -> set[int]:
+    """Return the polygon-index set held by the named SelectionTag on ``obj``.
+
+    Returns an empty set when no matching selection tag is found.
+
+    Uses ``BaseSelect.GetAll(maxElements)`` which returns a flat list of
+    1/0 ints in one C call — much faster than ``IsSelected`` per index for
+    50k+ poly meshes. The 2026 SDK removed ``GetSegment`` so the previous
+    segment-based fast path is unavailable.
+    """
+    target_id = getattr(c4d, "Tpolygonselection", 5673)
+    t = obj.GetFirstTag()
+    while t is not None:
+        if t.GetType() == target_id and t.GetName() == selection_name:
+            sel = t.GetBaseSelect()
+            poly_count = obj.GetPolygonCount()
+            if poly_count == 0:
+                return set()
+            flags = sel.GetAll(poly_count)
+            return {i for i, on in enumerate(flags) if on}
+        t = t.GetNext()
+    return set()
+
+
 # Alias → TEXTURETAG_PROJECTION_* constant. Resolved via getattr so the bridge
 # stays portable across C4D versions that add or drop projections.
 _PROJECTION_ALIASES: dict[str, str] = {
@@ -135,4 +160,102 @@ def handle_assign_material(params: dict[str, Any]) -> dict[str, Any]:
         "material": mat.GetName(),
         "projection": projection_out,
         "created": created,
+    }
+
+
+def _iter_object_tags(obj: c4d.BaseObject):
+    t = obj.GetFirstTag()
+    while t is not None:
+        yield t
+        t = t.GetNext()
+
+
+def _iter_ancestors(obj: c4d.BaseObject):
+    """Yield ``obj`` then each ancestor up to the document root."""
+    cur: c4d.BaseObject | None = obj
+    while cur is not None:
+        yield cur
+        cur = cur.GetUp()
+
+
+def _resolve_texture_tag(tag: c4d.BaseTag) -> tuple[str | None, set[int] | None]:
+    """Return ``(material_name, restriction_set)`` for a Texture tag.
+
+    ``material_name`` is None when no material is linked.
+    ``restriction_set`` is None for unrestricted tags, an empty set when
+    the named selection cannot be resolved, otherwise the polygon-index
+    set the restriction allows. Restriction lookups always run against
+    the tag's owning object — matching C4D's render-time behaviour.
+    """
+    try:
+        mat = tag[c4d.TEXTURETAG_MATERIAL]
+    except Exception:
+        mat = None
+    mat_name = mat.GetName() if isinstance(mat, c4d.BaseMaterial) else None
+
+    try:
+        restriction = tag[c4d.TEXTURETAG_RESTRICTION]
+    except Exception:
+        restriction = None
+    if not (isinstance(restriction, str) and restriction):
+        return mat_name, None
+
+    owner = tag.GetObject()
+    if not isinstance(owner, c4d.PolygonObject):
+        return mat_name, set()
+    return mat_name, _collect_polygon_selection_indices(owner, restriction)
+
+
+def compute_effective_materials_per_polygon(obj: c4d.PolygonObject) -> dict[str, Any]:
+    """Resolve, per polygon, which material C4D will shade with.
+
+    Walks the object's Texture tag chain plus its ancestors, honoring
+    ``TEXTURETAG_RESTRICTION`` (the polygon-selection-tag name a texture
+    tag is restricted to). Returns
+    ``{per_polygon, by_material, no_material_count, tags_considered}``.
+
+    Resolution order matches C4D's documented behaviour:
+
+    - The object's own Texture tags win over parent Texture tags.
+    - Within one object's tag list, the LAST applicable Texture tag wins
+      (top-to-bottom: later tags override earlier ones).
+    - "Applicable" means either the tag has no restriction, OR the
+      polygon's index is in the named polygon-selection tag's BaseSelect.
+
+    Implementation: build a priority-ordered chain by reversing each
+    ancestor's tag list (so "last in list" → first in chain) and
+    concatenating, then for each polygon take the first applicable entry.
+    Exposed via ``get_mesh(include=["effective_materials"])``.
+    """
+    poly_count = obj.GetPolygonCount()
+
+    # Priority-ordered chain: closest object first, and within one object
+    # later tags before earlier ones (since later overrides earlier).
+    # Skip tags with no linked material so an empty texture slot doesn't
+    # shadow a populated tag further down the chain.
+    chain: list[tuple[str, set[int] | None]] = []
+    for ancestor in _iter_ancestors(obj):
+        level = [t for t in _iter_object_tags(ancestor) if t.GetType() == c4d.Ttexture]
+        for tag in reversed(level):
+            mat_name, restriction = _resolve_texture_tag(tag)
+            if mat_name is not None:
+                chain.append((mat_name, restriction))
+
+    per_polygon: list[str | None] = [None] * poly_count
+    counts: dict[str, int] = {}
+    none_count = 0
+    for i in range(poly_count):
+        for mat_name, restriction in chain:
+            if restriction is None or i in restriction:
+                per_polygon[i] = mat_name
+                counts[mat_name] = counts.get(mat_name, 0) + 1
+                break
+        else:
+            none_count += 1
+
+    return {
+        "per_polygon": per_polygon,
+        "by_material": counts,
+        "no_material_count": none_count,
+        "tags_considered": len(chain),
     }

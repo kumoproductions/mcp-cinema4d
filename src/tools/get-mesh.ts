@@ -13,10 +13,12 @@ export const getMeshTool = defineTool({
     max_points: z.number().int().positive().optional().describe("Default 50000."),
     max_polys: z.number().int().positive().optional().describe("Default 50000."),
     include: z
-      .array(z.enum(["normals", "selections"]))
+      .array(z.enum(["normals", "selections", "effective_materials"]))
       .optional()
       .describe(
-        "Optional extras. 'normals' adds phong-shaded vertex normals. 'selections' adds `point_selection` / `poly_selection` / `edge_selection` index lists.",
+        "Optional extras. 'normals' adds phong-shaded vertex normals. " +
+          "'selections' adds `point_selection` / `poly_selection` / `edge_selection` index lists. " +
+          "'effective_materials' (PolygonObject only) walks the Texture tag inheritance chain — own tags before parent's, last applicable within a level wins, restriction selections honoured — and adds `effective_materials: {per_polygon, by_material, no_material_count, tags_considered}`.",
       ),
   },
   async handler(args, client) {

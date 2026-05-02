@@ -23,9 +23,11 @@ from ._helpers import (
     _find_take,
     _find_videopost,
     _json_safe,
+    _object_path,
     _plugin_type_alias,
     _resolve_handle,
     _shader_at,
+    _summary,
 )
 
 
@@ -105,9 +107,17 @@ def handle_exec_python(params: dict[str, Any]) -> dict[str, Any]:
 def handle_call_command(params: dict[str, Any]) -> dict[str, Any]:
     """Invoke a Cinema 4D command by plugin id (``c4d.CallCommand``).
 
-    CallCommand runs synchronously in many cases (e.g. Render to Picture
-    Viewer). Long-running commands may exceed the default 30s tool timeout —
-    pass a larger ``timeout_ms`` via exec_python if needed.
+    CallCommand runs synchronously in many cases (e.g. Connect Objects + Delete,
+    Render to Picture Viewer). Long-running commands may exceed the default
+    timeout — pass a larger ``timeout_ms`` via the TS side.
+
+    ``selected_objects`` (optional list of handles): set the active-object
+    selection before invoking the command and EventAdd-flush so GUI commands
+    like 12099 (Connect+Delete) actually see it. Without flushing,
+    SetActiveObject + CallCommand from script context has been observed to
+    no-op on selection-driven commands. The response reports ``active_before``
+    / ``active_after`` so callers can pick up the produced object even when
+    the command replaces the selection.
     """
     cid = params.get("command_id")
     if cid is None:
@@ -115,6 +125,48 @@ def handle_call_command(params: dict[str, Any]) -> dict[str, Any]:
     cid = int(cid)
     subid_raw = params.get("subid")
     subid = int(subid_raw) if subid_raw is not None else 0
+    selected_objects = params.get("selected_objects")
+
+    doc = documents.GetActiveDocument()
+
+    selection_set: list[dict[str, Any]] | None = None
+    if selected_objects is not None:
+        if not isinstance(selected_objects, list):
+            raise ValueError("selected_objects must be a list of handles")
+        if doc is None:
+            raise RuntimeError("no active document — cannot establish selection")
+        # Resolve all targets up front so a partial selection isn't left
+        # behind when one handle fails to resolve.
+        resolved: list[c4d.BaseObject] = []
+        for h in selected_objects:
+            obj = _resolve_handle(h)
+            if obj is None:
+                raise ValueError(f"selected_objects entry not resolved: {h}")
+            if not isinstance(obj, c4d.BaseObject):
+                raise ValueError(f"selected_objects entry is not a BaseObject: {h}")
+            resolved.append(obj)
+
+        # Clear first; SELECTION_NEW on the first item then SELECTION_ADD for
+        # the rest is the documented pattern but a stale prior selection has
+        # been observed to leak in some 2026 builds.
+        doc.SetActiveObject(None, c4d.SELECTION_NEW)
+        for i, obj in enumerate(resolved):
+            doc.SetActiveObject(obj, c4d.SELECTION_NEW if i == 0 else c4d.SELECTION_ADD)
+        # Flush the event queue so GUI commands see the new selection.
+        # SetActiveObject + CallCommand from script context has been
+        # observed to no-op on selection-driven commands (e.g. Connect
+        # Objects + Delete) without this flush.
+        c4d.EventAdd()
+        selection_set = [
+            {
+                "name": o.GetName(),
+                "path": _object_path(o),
+                "handle": {"kind": "object", "path": _object_path(o), "name": o.GetName()},
+            }
+            for o in resolved
+        ]
+
+    active_before = doc.GetActiveObject() if doc is not None else None
 
     name = ""
     with contextlib.suppress(Exception):
@@ -126,7 +178,26 @@ def handle_call_command(params: dict[str, Any]) -> dict[str, Any]:
 
     c4d.CallCommand(cid, subid)
     c4d.EventAdd()
-    return {"command_id": cid, "subid": subid, "name": name, "was_enabled": enabled}
+
+    active_after = doc.GetActiveObject() if doc is not None else None
+
+    def _active_summary(obj):
+        if obj is None:
+            return None
+        s = _summary(obj)
+        if isinstance(obj, c4d.BaseObject):
+            s["handle"] = {"kind": "object", "path": _object_path(obj), "name": obj.GetName()}
+        return s
+
+    return {
+        "command_id": cid,
+        "subid": subid,
+        "name": name,
+        "was_enabled": enabled,
+        "selection_set": selection_set,
+        "active_before": _active_summary(active_before),
+        "active_after": _active_summary(active_after),
+    }
 
 
 def _enumerate_plugins(

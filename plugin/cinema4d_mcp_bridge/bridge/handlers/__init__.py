@@ -19,6 +19,7 @@ Submodules (organised by domain, not by workflow):
   selection      — get_selection, set_selection
   hierarchy      — move_entity, clone_entity
   modeling       — modeling_command
+  polygon_merge  — connect_polygon_objects (polygon-preserving JOIN)
   mesh           — get_mesh, set_mesh, set_mesh_selection
   node_materials — list_graph_nodes, apply_graph_description,
                    set_graph_port, remove_graph_node
@@ -91,6 +92,7 @@ from .node_materials import (
     handle_remove_graph_node,
     handle_set_graph_port,
 )
+from .polygon_merge import handle_connect_polygon_objects
 from .preview_render import handle_preview_render
 from .render_data import handle_create_render_data
 from .script import (
@@ -157,6 +159,7 @@ HANDLERS = {
     "move_entity": handle_move_entity,
     "clone_entity": handle_clone_entity,
     "modeling_command": handle_modeling_command,
+    "connect_polygon_objects": handle_connect_polygon_objects,
     "get_mesh": handle_get_mesh,
     "set_mesh": handle_set_mesh,
     "set_mesh_selection": handle_set_mesh_selection,

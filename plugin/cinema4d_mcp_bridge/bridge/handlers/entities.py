@@ -32,6 +32,67 @@ from ._helpers import (
 )
 
 
+def _finalize_listing(
+    entries: list[dict[str, Any]],
+    pattern: Any,
+    params: dict[str, Any],
+    *,
+    track_depth: bool = False,
+) -> dict[str, Any]:
+    """Apply name_pattern -> total -> pagination / summary uniformly.
+
+    Centralised so every kind branch returns a consistent shape:
+    ``{entities: [...], total, offset, limit}`` for normal mode and
+    ``{summary: {total, by_type, by_depth?}}`` when ``summary_only`` is set.
+    The summary path skips serialising the per-entity payload entirely —
+    a 200K-character object listing typically collapses to <500 chars in
+    summary form.
+    """
+    filtered = _apply_name_pattern(entries, pattern)
+    total = len(filtered)
+
+    if bool(params.get("summary_only", False)):
+        by_type: dict[str, int] = {}
+        for e in filtered:
+            tid = e.get("type_id")
+            if tid is None:
+                continue
+            key = str(int(tid))
+            by_type[key] = by_type.get(key, 0) + 1
+        summary: dict[str, Any] = {"total": total, "by_type": by_type}
+        if track_depth:
+            by_depth: dict[str, int] = {}
+            for e in filtered:
+                d = e.get("depth")
+                if d is None:
+                    continue
+                key = str(int(d))
+                by_depth[key] = by_depth.get(key, 0) + 1
+            summary["by_depth"] = by_depth
+        return {"summary": summary, "total": total}
+
+    offset_raw = params.get("offset")
+    limit_raw = params.get("limit")
+    offset = int(offset_raw) if offset_raw is not None else 0
+    if offset < 0:
+        raise ValueError("offset must be >= 0")
+    if limit_raw is not None:
+        limit = int(limit_raw)
+        if limit <= 0:
+            raise ValueError("limit must be > 0")
+        page = filtered[offset : offset + limit]
+    else:
+        limit = None
+        page = filtered[offset:]
+
+    return {
+        "entities": page,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    }
+
+
 def handle_list_entities(params: dict[str, Any]) -> dict[str, Any]:
     kind = params.get("kind")
     if not isinstance(kind, str) or not kind:
@@ -49,13 +110,14 @@ def handle_list_entities(params: dict[str, Any]) -> dict[str, Any]:
         max_depth = params.get("max_depth")
         include_tags = bool(params.get("include_tags", False))
         include_params = params.get("include_params") or []
+        subtree_path = params.get("object_path")
 
         type_set = {int(x) for x in type_ids} if type_ids else None
         tag_set = {int(x) for x in tag_types} if tag_types else None
 
         out: list[dict[str, Any]] = []
 
-        def walk(o, depth=0):
+        def walk(o, depth=0, traverse_siblings=True):
             while o is not None:
                 if max_depth is None or depth <= int(max_depth):
                     match = True
@@ -105,10 +167,20 @@ def handle_list_entities(params: dict[str, Any]) -> dict[str, Any]:
                 d = o.GetDown()
                 if d is not None:
                     walk(d, depth + 1)
+                if not traverse_siblings:
+                    return
                 o = o.GetNext()
 
-        walk(doc.GetFirstObject())
-        return {"entities": _apply_name_pattern(out, pattern)}
+        if subtree_path:
+            root_obj = _find_object_by_path(str(subtree_path))
+            if root_obj is None:
+                raise ValueError(f"object not found at path: {subtree_path}")
+            # Subtree root counts as depth 0 — siblings of the root are
+            # excluded so the listing is genuinely scoped to the subtree.
+            walk(root_obj, depth=0, traverse_siblings=False)
+        else:
+            walk(doc.GetFirstObject())
+        return _finalize_listing(out, pattern, params, track_depth=True)
 
     if kind == "render_data":
         out = []
@@ -130,7 +202,7 @@ def handle_list_entities(params: dict[str, Any]) -> dict[str, Any]:
                 r = r.GetNext()
 
         walk_rd(doc.GetFirstRenderData())
-        return {"entities": _apply_name_pattern(out, pattern)}
+        return _finalize_listing(out, pattern, params, track_depth=True)
 
     if kind == "take":
         td = doc.GetTakeData()
@@ -157,7 +229,7 @@ def handle_list_entities(params: dict[str, Any]) -> dict[str, Any]:
                 c = c.GetNext()
 
         walk_take(td.GetMainTake())
-        return {"entities": _apply_name_pattern(out, pattern)}
+        return _finalize_listing(out, pattern, params, track_depth=True)
 
     if kind == "material":
         out = []
@@ -168,7 +240,7 @@ def handle_list_entities(params: dict[str, Any]) -> dict[str, Any]:
             entry["is_active"] = m == active_mat
             out.append(entry)
             m = m.GetNext()
-        return {"entities": _apply_name_pattern(out, pattern)}
+        return _finalize_listing(out, pattern, params)
 
     if kind == "tag":
         object_name = params.get("object")
@@ -205,7 +277,7 @@ def handle_list_entities(params: dict[str, Any]) -> dict[str, Any]:
                     o = o.GetNext()
 
             walk(doc.GetFirstObject())
-        return {"entities": _apply_name_pattern(out, pattern)}
+        return _finalize_listing(out, pattern, params)
 
     if kind == "video_post":
         rd_name = params.get("render_data")
@@ -219,7 +291,7 @@ def handle_list_entities(params: dict[str, Any]) -> dict[str, Any]:
         while vp is not None:
             out.append(_summary(vp))
             vp = vp.GetNext()
-        return {"entities": _apply_name_pattern(out, pattern)}
+        return _finalize_listing(out, pattern, params)
 
     if kind == "shader":
         owner_h = params.get("owner")
@@ -237,7 +309,7 @@ def handle_list_entities(params: dict[str, Any]) -> dict[str, Any]:
             out.append(e)
             s = s.GetNext()
             idx += 1
-        return {"entities": _apply_name_pattern(out, pattern)}
+        return _finalize_listing(out, pattern, params)
 
     raise ValueError(f"unknown kind: {kind!r}")
 

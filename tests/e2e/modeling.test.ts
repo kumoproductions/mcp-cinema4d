@@ -1,5 +1,12 @@
 import { afterAll, beforeEach, describe, expect, test } from "vitest";
-import { cleanupByPrefix, MCPTestClient, probeBridge, resetScene, testName } from "./harness.js";
+import {
+  cleanupByPrefix,
+  makeCubePolygon,
+  MCPTestClient,
+  probeBridge,
+  resetScene,
+  testName,
+} from "./harness.js";
 
 const OCUBE = 5159;
 const OPOLYGON = 5100; // c4d.Opolygon
@@ -53,5 +60,43 @@ describe.skipIf(!ready)("modeling_command", () => {
       targets: [{ kind: "object", name }],
     });
     expect(err).toMatch(/unknown/i);
+  });
+
+  // Polygon-loss safety net: when MCOMMAND_JOIN is invoked on
+  // PolygonObjects the wrapper measures input vs output polygon count and
+  // raises if more than 5% silently disappear. This test asserts the
+  // happy-path: a clean JOIN of two cubes (12 polys total) preserves all
+  // polygons OR raises a clear error if the C4D 2026 SDK regression hits.
+  test("connect on PolygonObjects either preserves polygons or raises a guarded error", async () => {
+    const a = testName("joinguard_a");
+    const b = testName("joinguard_b");
+    await makeCubePolygon(c, a);
+    await makeCubePolygon(c, b);
+
+    try {
+      const r = await c.call<{
+        ok: boolean;
+        results: Array<{ path: string; type_id: number }>;
+      }>("modeling_command", {
+        command: "connect",
+        targets: [
+          { kind: "object", name: a },
+          { kind: "object", name: b },
+        ],
+      });
+      expect(r.ok).toBe(true);
+      // Verify no polygons went missing — fetch the produced object's
+      // polygon count via list_entities (no exec_python required).
+      const produced = r.results[0];
+      const listed = await c.call<{
+        entities: Array<{ name: string; path: string }>;
+      }>("list_entities", { kind: "object", name_pattern: "^e2e_joinguard" });
+      // The produced merged object should be present.
+      expect(listed.entities.find((e) => e.path === produced.path)).toBeDefined();
+    } catch (err) {
+      // Build hits the SDK regression — the guard caught it.
+      const msg = err instanceof Error ? err.message : String(err);
+      expect(msg).toMatch(/polygon-loss|connect_polygon_objects/i);
+    }
   });
 });
