@@ -4,7 +4,7 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 Every CRUD tool identifies entities by a typed `handle` object — see [Entity handles](../README.md#entity-handles).
 
-61 tools across 16 groups.
+64 tools across 16 groups.
 
 ## Basics
 
@@ -99,11 +99,14 @@ Read and overwrite points, polygons, and selections.
 
 Save / open / create documents.
 
-| Tool            | Description                                                                                     |
-| --------------- | ----------------------------------------------------------------------------------------------- |
-| `save_document` | Save the active document to disk.                                                               |
-| `open_document` | Load a Cinema 4D scene file as a new document.                                                  |
-| `new_document`  | Insert a fresh empty BaseDocument into C4D's document list and (by default) switch focus to it. |
+| Tool                  | Description                                                                                                 |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `save_document`       | Save the active document to disk.                                                                           |
+| `open_document`       | Load a Cinema 4D scene file as a new document.                                                              |
+| `new_document`        | Insert a fresh empty BaseDocument into C4D's document list and (by default) switch focus to it.             |
+| `list_documents`      | Enumerate the documents currently open in Cinema 4D.                                                        |
+| `set_active_document` | Switch focus to an already-open document, identified by its list `index` (from `list_documents`) or `name`. |
+| `close_document`      | Close an open document, identified by its list `index` (from `list_documents`) or `name`.                   |
 
 ## Node materials
 

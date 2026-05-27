@@ -5,6 +5,88 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-05-27
+
+### Added
+
+- Multi-document management — three tools that fill the gap left by
+  `get_document_state` (which only reports the active document):
+  `list_documents` enumerates the open documents with a stable list
+  `index`, name, path and active flag; `set_active_document` switches
+  focus by `index` or unique `name` (name errors on zero/several matches,
+  pointing the caller to `index`); `close_document` closes one the same
+  way, refusing a document with unsaved changes unless `force:true` (its
+  `KillDocument` discards them without a prompt). Loading a file from disk
+  stays `open_document`; these only act on docs already open.
+
+## [0.2.6] - 2026-04-29
+
+### Added
+
+- `move_entity` extended beyond objects to the take and render-data
+  hierarchies. It now reparents / reorders takes (build nested child
+  takes; the Main take cannot be moved) and nests render data, rejecting
+  cross-kind moves (you can't drop a take under a render_data).
+- `create_render_data` gains a `parent` parameter so render presets can be
+  nested under another render data to build render-preset trees.
+
+## [0.2.5] - 2026-04-25
+
+### Added
+
+- `preview_render` — an agent-friendly verification render. Uses the
+  viewport renderer with a Constant + Lines sketch style and returns an
+  inline PNG, with several preset camera angles and an optional PNG export
+  (default resolution 1024px).
+
+## [0.2.4] - 2026-04-25
+
+_CI / release tooling only — no functional changes._
+
+- Bump `checkout` / `setup-node` to v6 (native Node 24).
+- Make the MCP Registry publish step idempotent so a re-tag or retry
+  recovers without manual surgery.
+
+## [0.2.3] - 2026-04-25
+
+_CI / release tooling only — no functional changes._
+
+- Mirror the npm package to GitHub Packages so it surfaces in the repo's
+  Packages sidebar.
+
+## [0.2.2] - 2026-04-25
+
+_CI / release tooling only — no functional changes._
+
+- Auto-sync `server.json` version on `npm version` so it never drifts from
+  `package.json`.
+- Fix the `mcp-publisher` release-asset name pattern and make the
+  plugin-zip / npm-publish jobs idempotent on retry.
+- Shorten the `server.json` description to fit the MCP Registry's
+  100-character cap.
+
+## [0.2.1] - 2026-04-25
+
+### Added
+
+- Distribution: register on the MCP Registry and publish via GitHub OIDC
+  on `v*` tags. Adds `server.json`
+  (`io.github.kumoproductions/mcp-cinema4d`) and `mcpName` in
+  `package.json` for npm-side ownership verification, with tag/version
+  consistency checks and an npm-propagation wait before the registry push.
+
+## [0.2.0] - 2026-04-25
+
+### Security
+
+- Python-ops opt-in gate (`C4D_MCP_ENABLE_PYTHON_OPS`, on both sides).
+  Creating or editing plugin types that store executable Python — Python
+  tag, Python generator, MoGraph Python effector, Python field, and the
+  Xpresso Python operator — is now gated behind its own flag, separate
+  from `exec_python`, since their code parameter is RCE-equivalent.
+
+## [0.1.4] - 2026-04-24
+
 ### Added
 
 - Xpresso (classic GvNodeMaster) graph authoring — four new tools that
@@ -13,16 +95,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   per-port summaries), `apply_xpresso_graph` (declarative node + connect
   builder, including `references` for Object/Link node BaseLink slots),
   `set_xpresso_port` (low-level add / remove / connect / disconnect /
-  set*value escape hatch), and `remove_xpresso_node`. Operator ids accept
-  short aliases (`object`/`const`/`math`/`formula`/`python`/…) or raw
-  `c4d.ID_OPERATOR*\*`ints. Lets the LLM build a working gear-meshing rig
-end-to-end without dropping into`exec_python`.
+  `set_value` escape hatch), and `remove_xpresso_node`. Operator ids accept
+  short aliases (`object` / `const` / `math` / `formula` / `python` / …)
+  or raw `c4d.ID_OPERATOR_*` ints. Lets the LLM build a working
+  gear-meshing rig end-to-end without dropping into `exec_python`.
 - `plugin_options` handle kind — resolves a scene-saver / scene-loader /
   bitmap-saver / etc. plugin's private settings `BaseList2D` (the object
   the Attribute Manager export dialog writes into, e.g. Alembic's
   `ABCEXPORT_FRAME_START`). Accepts either a format alias
-  (`"abc"`/`"fbx"`/`"obj"`/`"usd"`/`"gltf"`/…) or a raw plugin id, with
-  `plugin_type` defaulting to `"scene_saver"`. Plugs straight into the
+  (`"abc"` / `"fbx"` / `"obj"` / `"usd"` / `"gltf"` / …) or a raw plugin id,
+  with `plugin_type` defaulting to `"scene_saver"`. Plugs straight into the
   existing `describe` / `get_params` / `set_params` flow, so configuring
   exporter options before `save_document` no longer needs `exec_python`
   and direct `MSG_RETRIEVEPRIVATEDATA` calls.
@@ -38,6 +120,28 @@ end-to-end without dropping into`exec_python`.
   write in `doc.StartUndo` / `AddUndo` / `EndUndo`. Plugin-private
   settings live outside any document and calling AddUndo on them was
   observed to destabilise C4D 2026.
+
+## [0.1.3] - 2026-04-21
+
+_Internal — no functional changes._
+
+- Enrich the E2E suite.
+- Auto-regenerate `docs/TOOLS.md` via a lefthook pre-commit hook so CI's
+  drift guard never trips on a contributor who forgot to rebuild.
+
+## [0.1.2] - 2026-04-20
+
+### Added
+
+- `take_override` tool — author per-take parameter overrides.
+- `clone_entity` / `create_entity` extended to cover `video_post` entities
+  and takes.
+
+## [0.1.1] - 2026-04-19
+
+_Internal — no functional changes._
+
+- Regenerate `package-lock.json`.
 
 ## [0.1.0] - 2026-04-19
 
