@@ -120,6 +120,82 @@ def handle_new_document(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _iter_open_documents() -> list[Any]:
+    """Return every open document in C4D's document list, in list order.
+
+    The order matches the document tabs and is stable within a session, so the
+    index is a usable handle for ``set_active_document``.
+    """
+    docs = []
+    d = documents.GetFirstDocument()
+    while d is not None:
+        docs.append(d)
+        d = d.GetNext()
+    return docs
+
+
+def handle_list_documents(_params: dict[str, Any]) -> dict[str, Any]:
+    """Enumerate the open documents so a caller can pick one to switch to.
+
+    Returns one entry per open document with its list ``index`` (the handle
+    accepted by ``set_active_document``), name, path and whether it is active.
+    ``get_document_state`` only reports the active document; this fills the gap.
+    """
+    active = documents.GetActiveDocument()
+    out = []
+    for index, d in enumerate(_iter_open_documents()):
+        out.append(
+            {
+                "index": index,
+                "name": d.GetDocumentName() or "",
+                "path": d.GetDocumentPath() or "",
+                "active": d == active,
+            }
+        )
+    return {"documents": out, "count": len(out)}
+
+
+def handle_set_active_document(params: dict[str, Any]) -> dict[str, Any]:
+    """Switch focus to an already-open document, identified by index or name.
+
+    params:
+      index: 0-based position in the document list (see ``list_documents``)
+      name:  document name; errors if it matches zero or several documents
+
+    Exactly one of ``index`` / ``name`` must be given. Loading a file from disk
+    is ``open_document``; this only switches between documents already open.
+    """
+    docs = _iter_open_documents()
+    if not docs:
+        raise RuntimeError("no open documents")
+
+    idx = params.get("index")
+    name = params.get("name")
+    if (idx is None) == (name is None):
+        raise ValueError("pass exactly one of 'index' or 'name'")
+
+    if idx is not None:
+        idx = int(idx)
+        if not 0 <= idx < len(docs):
+            raise ValueError(f"index {idx} out of range (0..{len(docs) - 1})")
+        target = docs[idx]
+    else:
+        matches = [d for d in docs if (d.GetDocumentName() or "") == str(name)]
+        if not matches:
+            raise ValueError(f"no open document named {name!r}")
+        if len(matches) > 1:
+            raise ValueError(f"{len(matches)} open documents named {name!r}; use 'index' instead")
+        target = matches[0]
+
+    documents.SetActiveDocument(target)
+    c4d.EventAdd()
+    active = documents.GetActiveDocument()
+    return {
+        "active_document": active.GetDocumentName() if active else "",
+        "active_path": (active.GetDocumentPath() or "") if active else "",
+    }
+
+
 def handle_import_scene(params: dict[str, Any]) -> dict[str, Any]:
     """Merge an external scene file (abc/fbx/obj/c4d/...) into the active document.
 

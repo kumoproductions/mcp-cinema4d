@@ -118,6 +118,64 @@ describe.skipIf(!ready)("document I/O (save/open/new/import + set_document)", ()
   });
 
   // ---------------------------------------------------------------------------
+  // list_documents / set_active_document
+  // ---------------------------------------------------------------------------
+
+  type DocEntry = { index: number; name: string; path: string; active: boolean };
+
+  test("list_documents enumerates open docs and flags exactly one active", async () => {
+    // Two distinct named docs guarantees there is something to enumerate.
+    await c.call("new_document", { name: testName("ld_A"), make_active: true });
+    await c.call("new_document", { name: testName("ld_B"), make_active: true });
+
+    const r = await c.call<{ documents: DocEntry[]; count: number }>("list_documents", {});
+    expect(r.count).toBe(r.documents.length);
+    expect(r.documents.length).toBeGreaterThanOrEqual(2);
+    expect(r.documents.filter((d) => d.active).length).toBe(1);
+    // Indices are dense and 0-based.
+    expect(r.documents.map((d) => d.index)).toEqual(r.documents.map((_, i) => i));
+  });
+
+  test("set_active_document switches by index", async () => {
+    const nameA = testName("sad_A");
+    await c.call("new_document", { name: nameA, make_active: true });
+    await c.call("new_document", { name: testName("sad_B"), make_active: true });
+
+    const before = await c.call<{ documents: DocEntry[] }>("list_documents", {});
+    const target = before.documents.find((d) => d.name === nameA);
+    expect(target).toBeDefined();
+
+    const r = await c.call<{ active_document: string }>("set_active_document", {
+      index: target!.index,
+    });
+    expect(r.active_document).toBe(nameA);
+  });
+
+  test("set_active_document switches by unique name", async () => {
+    const nameA = testName("sad_byname");
+    await c.call("new_document", { name: nameA, make_active: true });
+    await c.call("new_document", { name: testName("sad_other"), make_active: true });
+
+    const r = await c.call<{ active_document: string }>("set_active_document", { name: nameA });
+    expect(r.active_document).toBe(nameA);
+  });
+
+  test("set_active_document rejects an out-of-range index", async () => {
+    const err = await c.callExpectError("set_active_document", { index: 9999 });
+    expect(err).toMatch(/out of range/i);
+  });
+
+  test("set_active_document rejects a missing name", async () => {
+    const err = await c.callExpectError("set_active_document", { name: testName("sad_nope") });
+    expect(err).toMatch(/no open document named/i);
+  });
+
+  test("set_active_document requires exactly one of index/name", async () => {
+    const err = await c.callExpectError("set_active_document", {});
+    expect(err).toMatch(/exactly one of/i);
+  });
+
+  // ---------------------------------------------------------------------------
   // set_document
   // ---------------------------------------------------------------------------
 

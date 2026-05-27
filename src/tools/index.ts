@@ -28,6 +28,7 @@ import { getObjectLayerTool } from "./get-object-layer.js";
 import { getParamsTool } from "./get-params.js";
 import { getSelectionTool } from "./get-selection.js";
 import { importSceneTool } from "./import-scene.js";
+import { listDocumentsTool } from "./list-documents.js";
 import { listEntitiesTool } from "./list-entities.js";
 import { listGraphNodeAssetsTool } from "./list-graph-node-assets.js";
 import { listGraphNodesTool } from "./list-graph-nodes.js";
@@ -51,6 +52,7 @@ import { renderTool } from "./render.js";
 import { resetSceneTool } from "./reset-scene.js";
 import { sampleTransformTool } from "./sample-transform.js";
 import { saveDocumentTool } from "./save-document.js";
+import { setActiveDocumentTool } from "./set-active-document.js";
 import { setDocumentTool } from "./set-document.js";
 import { setGraphPortTool } from "./set-graph-port.js";
 import { setKeyframeTool } from "./set-keyframe.js";
@@ -121,6 +123,8 @@ export const ALL_TOOLS: AnyTool[] = [
   saveDocumentTool,
   openDocumentTool,
   newDocumentTool,
+  listDocumentsTool,
+  setActiveDocumentTool,
   // Node materials
   listGraphNodesTool,
   listGraphNodeAssetsTool,
