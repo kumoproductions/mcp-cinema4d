@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -118,15 +119,27 @@ describe.skipIf(!ready)("document I/O (save/open/new/import + set_document)", ()
   });
 
   // ---------------------------------------------------------------------------
-  // list_documents / set_active_document
+  // list_documents / set_active_document / close_document
+  //
+  // C4D auto-discards an *empty, unmodified* document the moment focus moves to
+  // another one, so a freshly-created doc only survives if we dirty it first
+  // (add an object). `testName` is not unique either — these tests mint a
+  // per-call unique name so repeated runs in the same C4D session don't collide.
   // ---------------------------------------------------------------------------
 
   type DocEntry = { index: number; name: string; path: string; active: boolean };
 
+  const uniqName = (base: string) => testName(`${base}_${randomUUID().slice(0, 8)}`);
+
+  /** Create a doc that won't be auto-discarded: name it, then dirty it. */
+  async function openPersistentDoc(name: string): Promise<void> {
+    await c.call("new_document", { name, make_active: true });
+    await c.call("create_entity", { kind: "object", type_id: OCUBE, name: uniqName("marker") });
+  }
+
   test("list_documents enumerates open docs and flags exactly one active", async () => {
-    // Two distinct named docs guarantees there is something to enumerate.
-    await c.call("new_document", { name: testName("ld_A"), make_active: true });
-    await c.call("new_document", { name: testName("ld_B"), make_active: true });
+    await openPersistentDoc(uniqName("ld_A"));
+    await openPersistentDoc(uniqName("ld_B"));
 
     const r = await c.call<{ documents: DocEntry[]; count: number }>("list_documents", {});
     expect(r.count).toBe(r.documents.length);
@@ -137,9 +150,9 @@ describe.skipIf(!ready)("document I/O (save/open/new/import + set_document)", ()
   });
 
   test("set_active_document switches by index", async () => {
-    const nameA = testName("sad_A");
-    await c.call("new_document", { name: nameA, make_active: true });
-    await c.call("new_document", { name: testName("sad_B"), make_active: true });
+    const nameA = uniqName("sad_A");
+    await openPersistentDoc(nameA);
+    await openPersistentDoc(uniqName("sad_B"));
 
     const before = await c.call<{ documents: DocEntry[] }>("list_documents", {});
     const target = before.documents.find((d) => d.name === nameA);
@@ -152,9 +165,9 @@ describe.skipIf(!ready)("document I/O (save/open/new/import + set_document)", ()
   });
 
   test("set_active_document switches by unique name", async () => {
-    const nameA = testName("sad_byname");
-    await c.call("new_document", { name: nameA, make_active: true });
-    await c.call("new_document", { name: testName("sad_other"), make_active: true });
+    const nameA = uniqName("sad_byname");
+    await openPersistentDoc(nameA);
+    await openPersistentDoc(uniqName("sad_other"));
 
     const r = await c.call<{ active_document: string }>("set_active_document", { name: nameA });
     expect(r.active_document).toBe(nameA);
@@ -166,7 +179,7 @@ describe.skipIf(!ready)("document I/O (save/open/new/import + set_document)", ()
   });
 
   test("set_active_document rejects a missing name", async () => {
-    const err = await c.callExpectError("set_active_document", { name: testName("sad_nope") });
+    const err = await c.callExpectError("set_active_document", { name: uniqName("sad_nope") });
     expect(err).toMatch(/no open document named/i);
   });
 
@@ -175,33 +188,33 @@ describe.skipIf(!ready)("document I/O (save/open/new/import + set_document)", ()
     expect(err).toMatch(/exactly one of/i);
   });
 
-  test("close_document closes a clean document by name", async () => {
-    // A doc loaded from disk starts clean (GetChanged == false), so no force.
-    const savePath = path.join(workDir, `${testName("close_clean")}.c4d`);
-    await c.call("create_entity", { kind: "object", type_id: OCUBE, name: testName("cc_cube") });
+  test("close_document closes a clean document without force", async () => {
+    // A doc loaded from disk has objects (won't be auto-discarded) and is clean
+    // (GetChanged == false), so it can be closed without force. Identify it by
+    // index — the saved source doc lingers under the same name.
+    const savePath = path.join(workDir, `${uniqName("close_clean")}.c4d`);
+    await c.call("create_entity", { kind: "object", type_id: OCUBE, name: uniqName("cc_cube") });
     await c.call("save_document", { path: savePath, format: "c4d" });
-    await c.call("new_document", { name: testName("cc_keep"), make_active: true });
+    await openPersistentDoc(uniqName("cc_keep"));
 
     const opened = await c.call<{ active_document: string }>("open_document", {
       path: savePath,
       make_active: true,
     });
-    const docName = opened.active_document;
+    const list = await c.call<{ documents: DocEntry[] }>("list_documents", {});
+    const activeDoc = list.documents.find((d) => d.active);
+    expect(activeDoc?.name).toBe(opened.active_document);
 
-    const r = await c.call<{ closed_document: string; active_document: string }>("close_document", {
-      name: docName,
+    const r = await c.call<{ closed_document: string }>("close_document", {
+      index: activeDoc!.index,
     });
-    expect(r.closed_document).toBe(docName);
-
-    const after = await c.call<{ documents: DocEntry[] }>("list_documents", {});
-    expect(after.documents.some((d) => d.name === docName)).toBe(false);
+    expect(r.closed_document).toBe(opened.active_document);
   });
 
   test("close_document refuses a dirty document without force", async () => {
-    const dirtyName = testName("close_dirty");
-    await c.call("new_document", { name: dirtyName, make_active: true });
-    // Mutating the doc marks it changed.
-    await c.call("create_entity", { kind: "object", type_id: OCUBE, name: testName("cd_cube") });
+    const dirtyName = uniqName("close_dirty");
+    // openPersistentDoc adds an object, which also marks the doc changed.
+    await openPersistentDoc(dirtyName);
 
     const err = await c.callExpectError("close_document", { name: dirtyName });
     expect(err).toMatch(/unsaved changes/i);
