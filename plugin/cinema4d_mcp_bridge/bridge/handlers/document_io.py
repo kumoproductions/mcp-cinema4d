@@ -134,6 +134,29 @@ def _iter_open_documents() -> list[Any]:
     return docs
 
 
+def _resolve_open_document(docs: list[Any], idx: Any, name: Any) -> Any:
+    """Pick one open document by list ``index`` or unique ``name``.
+
+    Exactly one of ``idx`` / ``name`` must be given. Shared by
+    ``set_active_document`` and ``close_document`` so both identify a target
+    the same way: ``name`` errors on zero or several matches and points the
+    caller to ``index`` to disambiguate (e.g. several unsaved "Untitled" docs).
+    """
+    if (idx is None) == (name is None):
+        raise ValueError("pass exactly one of 'index' or 'name'")
+    if idx is not None:
+        idx = int(idx)
+        if not 0 <= idx < len(docs):
+            raise ValueError(f"index {idx} out of range (0..{len(docs) - 1})")
+        return docs[idx]
+    matches = [d for d in docs if (d.GetDocumentName() or "") == str(name)]
+    if not matches:
+        raise ValueError(f"no open document named {name!r}")
+    if len(matches) > 1:
+        raise ValueError(f"{len(matches)} open documents named {name!r}; use 'index' instead")
+    return matches[0]
+
+
 def handle_list_documents(_params: dict[str, Any]) -> dict[str, Any]:
     """Enumerate the open documents so a caller can pick one to switch to.
 
@@ -169,23 +192,7 @@ def handle_set_active_document(params: dict[str, Any]) -> dict[str, Any]:
     if not docs:
         raise RuntimeError("no open documents")
 
-    idx = params.get("index")
-    name = params.get("name")
-    if (idx is None) == (name is None):
-        raise ValueError("pass exactly one of 'index' or 'name'")
-
-    if idx is not None:
-        idx = int(idx)
-        if not 0 <= idx < len(docs):
-            raise ValueError(f"index {idx} out of range (0..{len(docs) - 1})")
-        target = docs[idx]
-    else:
-        matches = [d for d in docs if (d.GetDocumentName() or "") == str(name)]
-        if not matches:
-            raise ValueError(f"no open document named {name!r}")
-        if len(matches) > 1:
-            raise ValueError(f"{len(matches)} open documents named {name!r}; use 'index' instead")
-        target = matches[0]
+    target = _resolve_open_document(docs, params.get("index"), params.get("name"))
 
     documents.SetActiveDocument(target)
     c4d.EventAdd()
@@ -193,6 +200,46 @@ def handle_set_active_document(params: dict[str, Any]) -> dict[str, Any]:
     return {
         "active_document": active.GetDocumentName() if active else "",
         "active_path": (active.GetDocumentPath() or "") if active else "",
+    }
+
+
+def handle_close_document(params: dict[str, Any]) -> dict[str, Any]:
+    """Close an open document, identified by index or name.
+
+    params:
+      index: 0-based position in the document list (see ``list_documents``)
+      name:  document name; errors if it matches zero or several documents
+      force: bool (default False) — required to close a document with unsaved
+             changes, since ``KillDocument`` discards them without a prompt
+
+    Exactly one of ``index`` / ``name`` must be given. C4D always keeps at least
+    one document, so closing the last one leaves a fresh empty document active.
+    """
+    docs = _iter_open_documents()
+    if not docs:
+        raise RuntimeError("no open documents")
+
+    target = _resolve_open_document(docs, params.get("index"), params.get("name"))
+    force = bool(params.get("force", False))
+
+    # KillDocument has no dirty-check / save prompt (unlike the GUI close), so
+    # guard unsaved work behind an explicit force flag.
+    if target.GetChanged() and not force:
+        raise RuntimeError(
+            f"document {target.GetDocumentName()!r} has unsaved changes; "
+            "save it first or pass force=true to discard them"
+        )
+
+    closed_name = target.GetDocumentName() or ""
+    closed_path = target.GetDocumentPath() or ""
+    documents.KillDocument(target)
+    c4d.EventAdd()
+
+    active = documents.GetActiveDocument()
+    return {
+        "closed_document": closed_name,
+        "closed_path": closed_path,
+        "active_document": active.GetDocumentName() if active else "",
     }
 
 

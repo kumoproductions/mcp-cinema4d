@@ -175,6 +175,50 @@ describe.skipIf(!ready)("document I/O (save/open/new/import + set_document)", ()
     expect(err).toMatch(/exactly one of/i);
   });
 
+  test("close_document closes a clean document by name", async () => {
+    // A doc loaded from disk starts clean (GetChanged == false), so no force.
+    const savePath = path.join(workDir, `${testName("close_clean")}.c4d`);
+    await c.call("create_entity", { kind: "object", type_id: OCUBE, name: testName("cc_cube") });
+    await c.call("save_document", { path: savePath, format: "c4d" });
+    await c.call("new_document", { name: testName("cc_keep"), make_active: true });
+
+    const opened = await c.call<{ active_document: string }>("open_document", {
+      path: savePath,
+      make_active: true,
+    });
+    const docName = opened.active_document;
+
+    const r = await c.call<{ closed_document: string; active_document: string }>("close_document", {
+      name: docName,
+    });
+    expect(r.closed_document).toBe(docName);
+
+    const after = await c.call<{ documents: DocEntry[] }>("list_documents", {});
+    expect(after.documents.some((d) => d.name === docName)).toBe(false);
+  });
+
+  test("close_document refuses a dirty document without force", async () => {
+    const dirtyName = testName("close_dirty");
+    await c.call("new_document", { name: dirtyName, make_active: true });
+    // Mutating the doc marks it changed.
+    await c.call("create_entity", { kind: "object", type_id: OCUBE, name: testName("cd_cube") });
+
+    const err = await c.callExpectError("close_document", { name: dirtyName });
+    expect(err).toMatch(/unsaved changes/i);
+
+    // force discards and closes.
+    const r = await c.call<{ closed_document: string }>("close_document", {
+      name: dirtyName,
+      force: true,
+    });
+    expect(r.closed_document).toBe(dirtyName);
+  });
+
+  test("close_document rejects an out-of-range index", async () => {
+    const err = await c.callExpectError("close_document", { index: 9999 });
+    expect(err).toMatch(/out of range/i);
+  });
+
   // ---------------------------------------------------------------------------
   // set_document
   // ---------------------------------------------------------------------------

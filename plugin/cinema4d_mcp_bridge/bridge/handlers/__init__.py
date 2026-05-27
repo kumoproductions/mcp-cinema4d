@@ -15,7 +15,8 @@ Submodules (organised by domain, not by workflow):
   takes          — create_take, take_override
   render_data    — create_render_data
   document_io    — save/open/new_document, list_documents,
-                   set_active_document, import_scene, set_document
+                   set_active_document, close_document, import_scene,
+                   set_document
   document_state — get_document_state
   selection      — get_selection, set_selection
   hierarchy      — move_entity, clone_entity
@@ -49,6 +50,7 @@ from .basics import (
     handle_undo,
 )
 from .document_io import (
+    handle_close_document,
     handle_import_scene,
     handle_list_documents,
     handle_new_document,
@@ -168,6 +170,7 @@ HANDLERS = {
     "new_document": handle_new_document,
     "list_documents": handle_list_documents,
     "set_active_document": handle_set_active_document,
+    "close_document": handle_close_document,
     "list_graph_nodes": handle_list_graph_nodes,
     "list_graph_node_assets": handle_list_graph_node_assets,
     "get_graph_info": handle_get_graph_info,

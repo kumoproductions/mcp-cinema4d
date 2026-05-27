@@ -9,6 +9,7 @@ import { assignMaterialTool } from "./assign-material.js";
 import { assignToLayerTool } from "./assign-to-layer.js";
 import { batchTool } from "./batch.js";
 import { callCommandTool } from "./call-command.js";
+import { closeDocumentTool } from "./close-document.js";
 import { cloneEntityTool } from "./clone-entity.js";
 import { createEntityTool } from "./create-entity.js";
 import { createLayerTool } from "./create-layer.js";
@@ -125,6 +126,7 @@ export const ALL_TOOLS: AnyTool[] = [
   newDocumentTool,
   listDocumentsTool,
   setActiveDocumentTool,
+  closeDocumentTool,
   // Node materials
   listGraphNodesTool,
   listGraphNodeAssetsTool,
