@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-02
+
+### Changed
+
+- **Breaking — CLI bin renamed `cinema4d-mcp` → `mcp-cinema4d`** to match the
+  npm package name. If your client config invokes the bin directly
+  (`command: "cinema4d-mcp"`), switch to `mcp-cinema4d`. Configs using
+  `npx -y @kumoproductions/mcp-cinema4d` keep working as-is.
+
 ## [0.2.7] - 2026-05-27
 
 ### Added
@@ -234,7 +243,7 @@ candidate paths suggested; `create_entity` returns handles with both
 
 ### Distribution
 
-- npm package `@kumoproductions/mcp-cinema4d` (CLI entry: `cinema4d-mcp`).
+- npm package `@kumoproductions/mcp-cinema4d` (CLI entry: `mcp-cinema4d`).
 - Bridge plugin shipped as a versioned zip attached to each GitHub Release;
   end users extract it into their Cinema 4D plugins folder.
 - Maxon-registered plugin id `1068169`.

@@ -28,7 +28,7 @@ except Exception:
     raise
 
 
-PLUGIN_ID = 1068169  # Maxon-registered id for cinema4d-mcp (plugincafe.maxon.net)
+PLUGIN_ID = 1068169  # Maxon-registered id for mcp-cinema4d (plugincafe.maxon.net)
 PLUGIN_NAME = "MCP Bridge"
 DEFAULT_PORT = 18710
 

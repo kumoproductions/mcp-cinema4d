@@ -1,11 +1,11 @@
-# cinema4d-mcp
+# mcp-cinema4d
 
 [![CI](https://github.com/kumoproductions/mcp-cinema4d/actions/workflows/ci.yml/badge.svg)](https://github.com/kumoproductions/mcp-cinema4d/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D24-informational)](package.json)
 [![Cinema 4D](https://img.shields.io/badge/Cinema%204D-%3E%3D2026.0.0-informational)](https://www.maxon.net/en/cinema-4d)
 
-Let an LLM drive Cinema 4D. **cinema4d-mcp** bridges MCP-compatible clients (Claude Desktop, Claude Code, or any other stdio-capable MCP client) to a running Cinema 4D 2026 session so the model can inspect scene hierarchy, author shots, build node materials, and rig animation through a typed, undo-safe tool layer — not arbitrary Python pasted into a Script Manager.
+Let an LLM drive Cinema 4D. **mcp-cinema4d** bridges MCP-compatible clients (Claude Desktop, Claude Code, or any other stdio-capable MCP client) to a running Cinema 4D 2026 session so the model can inspect scene hierarchy, author shots, build node materials, and rig animation through a typed, undo-safe tool layer — not arbitrary Python pasted into a Script Manager.
 
 **Good for:**
 

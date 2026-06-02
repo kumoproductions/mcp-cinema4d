@@ -1,4 +1,4 @@
-# Contributing to cinema4d-mcp
+# Contributing to mcp-cinema4d
 
 Thanks for your interest. This project connects Cinema 4D to MCP clients (Claude Desktop / Claude Code and any other stdio-capable MCP client) through a TypeScript server and a Python bridge plugin. Most contributions will touch either the TS tool definitions, the Python handlers that run inside C4D, or both.
 
@@ -11,7 +11,7 @@ Thanks for your interest. This project connects Cinema 4D to MCP clients (Claude
 
 ```bash
 git clone https://github.com/kumoproductions/mcp-cinema4d.git
-cd cinema4d-mcp
+cd mcp-cinema4d
 npm install        # also runs `lefthook install`
 npm run build
 ```
@@ -47,7 +47,7 @@ instead of the published npm package:
   "mcpServers": {
     "cinema4d": {
       "command": "node",
-      "args": ["/absolute/path/to/cinema4d-mcp/dist/index.js"]
+      "args": ["/absolute/path/to/mcp-cinema4d/dist/index.js"]
     }
   }
 }

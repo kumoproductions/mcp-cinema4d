@@ -27,7 +27,7 @@
     "url": "git+https://github.com/kumoproductions/mcp-cinema4d.git"
   },
   "bin": {
-    "cinema4d-mcp": "dist/index.js"
+    "mcp-cinema4d": "dist/index.js"
   },
   "files": [
     "dist",

@@ -26,7 +26,7 @@ export class MCPTestClient {
   private transport: StdioClientTransport | null = null;
 
   constructor() {
-    this.client = new Client({ name: "cinema4d-mcp-e2e", version: "0.0.1" }, { capabilities: {} });
+    this.client = new Client({ name: "mcp-cinema4d-e2e", version: "0.0.1" }, { capabilities: {} });
   }
 
   async connect(): Promise<void> {
