@@ -89,11 +89,175 @@ def _resolve_node_space(alias: str | None, default: str | None = None) -> str:
     )
 
 
+_NEUTRON_SPACE_ID = "net.maxon.neutron.nodespace"
+
+
+def _is_neutron_space(space_id: str) -> bool:
+    return str(space_id) == _NEUTRON_SPACE_ID
+
+
 def _require_maxon() -> None:
     if not _MAXON_AVAILABLE:
         raise RuntimeError(
             "maxon module not available — this C4D build lacks node-material support"
         )
+
+
+# --- Low-level graph construction (AddChild) ---------------------------------
+#
+# maxon.GraphDescription.ApplyDescription resolves $type through a localized
+# name→id table. For material spaces that table holds friendly labels
+# ("BSDF", "Output", ...); for the neutron node space it is empty, so
+# GraphDescription cannot create any node there ("node type reference ... is
+# not associated with any IDs").
+#
+# graph.AddChild, by contrast, accepts *raw node-template asset ids* directly in
+# every space (verified: a render node on a standard material, a corenode-backed
+# net.maxon.node.* on neutron). The helpers below interpret the same declarative
+# description dict the GraphDescription path accepts, but build the graph through
+# AddChild / Connect / SetPortValue. They drive the neutron path unconditionally
+# and serve as a fallback for material spaces when a raw asset id is passed as
+# $type (e.g. an id straight from list_graph_node_assets).
+#
+# Note: the addable ids are node-template asset ids — NOT the net.maxon.corenode:*
+# ids that list_graph_nodes reports for existing nodes (those are the lower-level
+# compute nodes and are rejected by AddChild). Use list_graph_node_assets to
+# discover valid ids for a space.
+
+_DESC_RESERVED = {"$type", "$id"}
+
+# Substring of the maxon error raised when GraphDescription can't resolve a
+# $type label — our cue to retry creation through the low-level AddChild path.
+_UNRESOLVED_TYPE_MARKER = "is not associated with any IDs"
+
+
+def _is_unresolved_type_error(exc: Exception) -> bool:
+    return _UNRESOLVED_TYPE_MARKER in str(exc)
+
+
+def _coerce_port_value(value: Any) -> Any:
+    """Coerce a JSON value into a maxon type for SetPortValue where helpful.
+
+    Lists of 3/4 numbers become Vector/Vector4d (vector ports). Scalars and
+    strings are passed through — GraphNode.SetPortValue converts them natively.
+    """
+    if isinstance(value, (list, tuple)):
+        nums = [float(x) for x in value if isinstance(x, (int, float))]
+        if len(value) == 3 and len(nums) == 3:
+            return maxon.Vector(nums[0], nums[1], nums[2])
+        if len(value) == 4 and len(nums) == 4:
+            return maxon.Vector4d(nums[0], nums[1], nums[2], nums[3])
+    return value
+
+
+def _ll_port_valid(port: Any) -> bool:
+    # FindChild returns a null GraphNode (not None) for a missing port, and
+    # calling IsValid() on it raises rather than returning False.
+    try:
+        return port is not None and bool(port.IsValid())
+    except Exception:
+        return False
+
+
+def _ll_find_port(node: Any, name: str) -> tuple[Any, str | None]:
+    """Locate a port by name on a node, returning (port, 'in'|'out'|None)."""
+    port = node.GetInputs().FindChild(name)
+    if _ll_port_valid(port):
+        return port, "in"
+    port = node.GetOutputs().FindChild(name)
+    if _ll_port_valid(port):
+        return port, "out"
+    return None, None
+
+
+def _ll_connect(parent: Any, parent_port: str, child: Any, child_port: str) -> None:
+    """Wire a connection between a parent node port and a child node port.
+
+    Mirrors the GraphDescription convention where a "L -> R" key on a node maps
+    L to a port on that node and R to a port on the nested (child) node. The
+    actual wire is always drawn output→input regardless of which side is which.
+    """
+    pport, pdir = _ll_find_port(parent, parent_port)
+    if pport is None:
+        raise ValueError(f"connection port {parent_port!r} not found on parent node")
+    cport, cdir = _ll_find_port(child, child_port)
+    if cport is None:
+        raise ValueError(f"connection port {child_port!r} not found on child node")
+    if pdir == "out" and cdir == "in":
+        pport.Connect(cport)
+    elif pdir == "in" and cdir == "out":
+        cport.Connect(pport)
+    else:
+        # Same-direction / ambiguous: best-effort, treat the parent side as source.
+        pport.Connect(cport)
+
+
+def _ll_build_node(
+    graph: Any, spec: Any, space: str, idmap: dict[str, Any], touched: list[str]
+) -> Any:
+    """Recursively create a node (and its wired children) from a description dict."""
+    if not isinstance(spec, dict):
+        raise ValueError(f"node spec must be a dict, got {type(spec).__name__}")
+
+    # A spec with only $id (no $type) references a previously-created node.
+    if "$type" not in spec:
+        ref = spec.get("$id")
+        if ref is not None and str(ref) in idmap:
+            return idmap[str(ref)]
+        raise ValueError(f"node spec missing $type (and no known $id reference): {spec!r}")
+
+    type_id = str(spec["$type"])
+    sid = spec.get("$id")
+    # Use $id as the child node id so callers get stable, addressable ids;
+    # fall back to an auto-assigned UUID if it isn't a usable maxon.Id.
+    child_id = maxon.Id()
+    if sid is not None and str(sid):
+        with contextlib.suppress(Exception):
+            child_id = maxon.Id(str(sid))
+    try:
+        node = graph.AddChild(child_id, maxon.Id(type_id), maxon.DataDictionary())
+    except Exception as exc:
+        raise RuntimeError(
+            f"failed to create node of type {type_id!r} in node_space {space!r}: {exc}. "
+            "$type must be a node-template asset id valid for this space (e.g. "
+            "'net.maxon.node.invert' for scene nodes); the net.maxon.corenode:* ids "
+            "reported by list_graph_nodes are NOT addable. Call list_graph_node_assets "
+            "to discover valid ids."
+        ) from exc
+
+    touched.append(str(node.GetId()))
+    if sid is not None:
+        idmap[str(sid)] = node
+
+    for key, value in spec.items():
+        if key in _DESC_RESERVED:
+            continue
+        if "->" in key:
+            left, right = (part.strip() for part in key.split("->", 1))
+            child = _ll_build_node(graph, value, space, idmap, touched)
+            _ll_connect(node, left, child, right)
+        else:
+            port, _ = _ll_find_port(node, key)
+            if port is None:
+                raise ValueError(f"unknown port {key!r} on node $type {type_id!r}")
+            port.SetPortValue(_coerce_port_value(value))
+    return node
+
+
+def _apply_graph_description_lowlevel(graph: Any, description: Any, space: str) -> list[str]:
+    """Apply a creation description to any graph via the low-level AddChild API.
+
+    Accepts a single node-spec dict or a list of them. Returns the ids of all
+    nodes that were created.
+    """
+    specs = description if isinstance(description, list) else [description]
+    idmap: dict[str, Any] = {}
+    touched: list[str] = []
+    with graph.BeginTransaction() as tx:
+        for spec in specs:
+            _ll_build_node(graph, spec, space, idmap, touched)
+        tx.Commit()
+    return touched
 
 
 def _get_graph(element, space_id: str):
@@ -187,8 +351,8 @@ def handle_apply_graph_description(params: dict[str, Any]) -> dict[str, Any]:
       create_graph: bool — when True, create the graph if missing (default True)
     """
     description = params.get("description")
-    if not isinstance(description, dict):
-        raise ValueError("description must be a dict")
+    if not isinstance(description, (dict, list)):
+        raise ValueError("description must be a dict (or a list of dicts)")
 
     _require_maxon()
     element = _resolve_graph_element(params)
@@ -207,7 +371,25 @@ def handle_apply_graph_description(params: dict[str, Any]) -> dict[str, Any]:
             f"no graph on material in node_space {space!r} (pass create_graph:true to create one)"
         )
 
-    result = maxon.GraphDescription.ApplyDescription(graph, description, nodeSpace=space)
+    # The neutron (Scene Nodes) space cannot resolve $type through
+    # GraphDescription at all, so creation goes through the low-level AddChild API.
+    if _is_neutron_space(space):
+        touched = _apply_graph_description_lowlevel(graph, description, space)
+        c4d.EventAdd()
+        return {"applied": True, "node_space": space, "touched_ids": touched}
+
+    try:
+        result = maxon.GraphDescription.ApplyDescription(graph, description, nodeSpace=space)
+    except Exception as exc:
+        # GraphDescription resolves $type via localized labels ("BSDF", "Output",
+        # ...). A raw node-template asset id (e.g. straight from
+        # list_graph_node_assets) isn't in that table, so retry through the
+        # low-level builder, which accepts raw ids directly.
+        if not _is_unresolved_type_error(exc):
+            raise
+        touched = _apply_graph_description_lowlevel(graph, description, space)
+        c4d.EventAdd()
+        return {"applied": True, "node_space": space, "touched_ids": touched}
 
     # ApplyDescription returns a dict[id -> GraphNode]; surface just the ids.
     node_ids: list[str] = []
@@ -321,15 +503,58 @@ def handle_get_graph_info(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# Node-template asset id families per node space. Verified empirically: AddChild
+# accepts a space's own families and rejects others ("<id> doesn't support node
+# system class <space>.nodesystemclass"). Node-space metadata on the assets is
+# empty, so id prefix is the only reliable discriminator we can read cheaply.
+_NEUTRON_TEMPLATE_PREFIXES = (
+    "net.maxon.node.",
+    "net.maxon.nodes.",
+    "net.maxon.pattern.",
+    "net.maxon.nbo.",
+)
+_STANDARD_TEMPLATE_PREFIXES = ("net.maxon.render.",)
+_REDSHIFT_TEMPLATE_PREFIXES = ("com.redshift3d.",)
+
+# Safety cap so a pathological asset DB can never produce an unbounded response
+# (enumerating every node template and reading per-asset metadata has crashed
+# C4D in the past — we now read ids only).
+_LIST_ASSETS_MAX = 5000
+
+
+def _template_matches_space(asset_id: str, space: str) -> bool:
+    """Whether a node-template asset is addable in the given node space.
+
+    Returns True (no filtering) for spaces we don't have a verified prefix set
+    for, so third-party / unknown spaces still get a full catalogue.
+    """
+    if _is_neutron_space(space):
+        return ".neutron." in asset_id or asset_id.startswith(_NEUTRON_TEMPLATE_PREFIXES)
+    if space == _NODE_SPACE_ALIASES["standard"]:
+        return asset_id.startswith(_STANDARD_TEMPLATE_PREFIXES)
+    if space == _NODE_SPACE_ALIASES["redshift"]:
+        return asset_id.startswith(_REDSHIFT_TEMPLATE_PREFIXES)
+    return True
+
+
+def _derive_template_category(asset_id: str) -> str | None:
+    """Best-effort category derived from the asset id (no metadata read)."""
+    head = asset_id.split(":")[0].split("@")[0]
+    parts = head.split(".")
+    return parts[-2] if len(parts) >= 2 else None
+
+
 def handle_list_graph_node_assets(params: dict[str, Any]) -> dict[str, Any]:
-    """Enumerate registered node assets for a node space.
+    """Enumerate registered node-template assets for a node space.
 
     LLMs need these ids to know what ``$type`` values ``apply_graph_description``
-    will accept. We query the Maxon asset repository for the ``NodeTemplate``
-    category and filter by node-space compatibility where possible.
+    will accept. We enumerate the Maxon ``NodeTemplate`` assets (reading ids only,
+    to stay cheap and crash-safe) and, for the neutron / Scene Nodes space, filter
+    to the families that are actually addable there.
 
     params:
-      node_space: alias or maxon.Id. Default 'standard'.
+      node_space: alias ('standard'/'redshift'/'scenenodes') or maxon.Id.
+                  Default 'standard'.
     """
     if not _MAXON_AVAILABLE:
         return {"supported": False, "reason": "maxon module unavailable", "assets": []}
@@ -346,8 +571,6 @@ def handle_list_graph_node_assets(params: dict[str, Any]) -> dict[str, Any]:
                 "node_space": space,
                 "assets": [],
             }
-        # NodeTemplate assets carry NODESPACE metadata; most builds expose
-        # maxon.AssetTypes.NodeTemplate() as the canonical type.
         template_type = None
         with contextlib.suppress(Exception):
             template_type = maxon.AssetTypes.NodeTemplate().GetId()
@@ -368,28 +591,26 @@ def handle_list_graph_node_assets(params: dict[str, Any]) -> dict[str, Any]:
             maxon.Id(),
             maxon.ASSET_FIND_MODE.LATEST,
         )
+        seen: set[str] = set()
         for asset in found or []:
             try:
-                desc = asset.GetDescription()
                 aid = str(asset.GetId())
             except Exception:
                 continue
-            entry: dict[str, Any] = {"id": aid}
-            # Node-space filter: assets carry a NODESPACE id in their metadata.
-            node_space_id = None
-            with contextlib.suppress(Exception):
-                meta = desc.GetMetaData()
-                node_space_id = str(meta.Get(maxon.ASSETMETADATA.NodeSpaceId) or "") or None
-            if node_space_id and node_space_id != space:
+            if not aid or aid in seen:
                 continue
-            with contextlib.suppress(Exception):
-                entry["name"] = str(desc.GetMetaString(maxon.OBJECT.BASE.NAME) or "") or None
-            with contextlib.suppress(Exception):
-                category = desc.GetMetaString(maxon.ASSETMETADATA.Category) or ""
-                entry["category"] = str(category) or None
-            if node_space_id:
-                entry["node_space"] = node_space_id
+            # Each space only exposes its own node-template families; templates
+            # from other spaces are rejected by AddChild / GraphDescription.
+            if not _template_matches_space(aid, space):
+                continue
+            seen.add(aid)
+            entry: dict[str, Any] = {"id": aid}
+            category = _derive_template_category(aid)
+            if category:
+                entry["category"] = category
             assets.append(entry)
+            if len(assets) >= _LIST_ASSETS_MAX:
+                break
     except Exception as exc:
         return {
             "supported": False,
@@ -398,21 +619,14 @@ def handle_list_graph_node_assets(params: dict[str, Any]) -> dict[str, Any]:
             "assets": [],
         }
 
-    # Deduplicate by id (asset repo often returns multiple versions).
-    seen: set[str] = set()
-    unique: list[dict[str, Any]] = []
-    for entry in assets:
-        if entry["id"] in seen:
-            continue
-        seen.add(entry["id"])
-        unique.append(entry)
-    unique.sort(key=lambda e: e["id"])
+    assets.sort(key=lambda e: e["id"])
 
     return {
         "supported": True,
         "node_space": space,
-        "assets": unique,
-        "count": len(unique),
+        "assets": assets,
+        "count": len(assets),
+        "truncated": len(assets) >= _LIST_ASSETS_MAX,
     }
 
 

@@ -5,6 +5,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+
+- **`apply_graph_description` now builds Scene Nodes graphs.** With
+  `scope:"document"` it creates nodes, connections, and port values on the
+  scene-nodes (neutron) graph, which previously rejected every `$type`. Use a
+  `$type` from `list_graph_node_assets` (e.g. `net.maxon.node.invert`), not the
+  `net.maxon.corenode:*` ids shown by `list_graph_nodes`.
+- **`list_graph_node_assets` returns the right node types per space.** It now
+  lists the templates you can actually add in `scenenodes`, `standard`, or
+  `redshift`, instead of an empty or mixed list.
+
 ## [0.3.0] - 2026-06-02
 
 ### Changed
