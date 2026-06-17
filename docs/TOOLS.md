@@ -115,9 +115,9 @@ Walk and edit node-material graphs (Standard / Redshift / ...).
 | Tool                      | Description                                                                                                                                             |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `list_graph_nodes`        | Walk a node graph and return a flat list of nodes.                                                                                                      |
-| `list_graph_node_assets`  | Enumerate registered node-template assets for a node space.                                                                                             |
+| `list_graph_node_assets`  | Enumerate registered node-template asset ids for a node space — the ids you pass to `apply_graph_description` as `$type`.                               |
 | `get_graph_info`          | Report which node spaces a material exposes a graph in, which one is currently active, and the alias table the bridge understands.                      |
-| `apply_graph_description` | Build or mutate a node material graph using maxon.GraphDescription's declarative dict syntax.                                                           |
+| `apply_graph_description` | Build or mutate a node graph using maxon.GraphDescription's declarative dict syntax.                                                                    |
 | `set_graph_port`          | Update a single port on a node addressable by its stable $id within a node material graph.                                                              |
 | `remove_graph_node`       | Delete a node by id from a node-material graph.                                                                                                         |
 | `list_xpresso_nodes`      | Walk an Xpresso (Texpresso / GvNodeMaster) tag and return a flat list of its GvNodes.                                                                   |

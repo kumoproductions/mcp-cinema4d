@@ -34,4 +34,22 @@ describe.skipIf(!ready)("list_graph_node_assets", () => {
       expect(entry.id.length).toBeGreaterThan(0);
     }
   });
+
+  test("filters the scene-nodes (neutron) space to addable templates", async () => {
+    const r = await c.call<{
+      supported: boolean;
+      node_space: string;
+      assets: Array<{ id: string; category?: string }>;
+    }>("list_graph_node_assets", { node_space: "scenenodes" });
+    expect(typeof r.supported).toBe("boolean");
+    expect(Array.isArray(r.assets)).toBe(true);
+    if (!r.supported) return;
+    expect(r.node_space).toMatch(/neutron\.nodespace/);
+    for (const entry of r.assets) {
+      // Only neutron-compatible families are returned; material-space
+      // templates (redshift / standard render) must be filtered out.
+      expect(entry.id.startsWith("com.redshift3d")).toBe(false);
+      expect(entry.id.startsWith("net.maxon.render.")).toBe(false);
+    }
+  });
 });
