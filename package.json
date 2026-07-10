@@ -48,6 +48,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
@@ -58,7 +59,7 @@
     "format:py:check": "uvx ruff@0.15.11 format --check",
     "docs:tools": "npm run build && node scripts/generate-tools-doc.mjs",
     "docs:tools:check": "npm run build && node scripts/generate-tools-doc.mjs --check",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run lint:py && npm run format:py:check && npm run docs:tools:check",
+    "check": "npm run typecheck && npm run typecheck:test && npm run lint && npm run format:check && npm run lint:py && npm run format:py:check && npm run docs:tools:check",
     "prepare": "lefthook install",
     "prepublishOnly": "npm run build",
     "version": "node scripts/sync-server-version.mjs && git add server.json"

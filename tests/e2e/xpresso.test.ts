@@ -112,6 +112,43 @@ describe.skipIf(!ready)("xpresso", () => {
     }
   });
 
+  test("set_xpresso_port connects two nodes low-level", async () => {
+    const cubeName = testName("xp_port");
+    await c.call("create_entity", { kind: "object", type_id: "cube", name: cubeName });
+    // Build const + result without wiring them, then connect via the low-level tool.
+    const applied = await c.call<{ nodes: Record<string, { id: string }> }>("apply_xpresso_graph", {
+      handle: { kind: "object", name: cubeName },
+      create_tag_if_missing: true,
+      nodes: { c: { operator_id: "const" }, r: { operator_id: "result" } },
+    });
+    const tag = { kind: "tag", object: cubeName, type_id: 1001149 /* c4d.Texpresso */ };
+
+    const res = await c.call<{ action: string; connected?: boolean }>("set_xpresso_port", {
+      node: { kind: "gv_node", tag, id: applied.nodes.c.id },
+      action: "connect",
+      port: { dir: "out", index: 0 },
+      target: {
+        dir: "in",
+        index: 0,
+        node_handle: { kind: "gv_node", tag, id: applied.nodes.r.id },
+      },
+    });
+    expect(res.action).toBe("connect");
+    expect(typeof res.connected).toBe("boolean");
+
+    // Ground truth: when the bridge reports success the result node should now
+    // have a connected input port (port layouts vary by build, so only assert
+    // when connected is true).
+    const listed = await c.call<{ nodes: NodeSummary[] }>("list_xpresso_nodes", {
+      handle: { kind: "object", name: cubeName },
+    });
+    const resultNode = listed.nodes.find((n) => n.operator_name.toLowerCase().includes("result"));
+    expect(resultNode).toBeDefined();
+    if (res.connected) {
+      expect(resultNode!.in_ports.some((p) => p.connected)).toBe(true);
+    }
+  });
+
   test("remove_xpresso_node deletes a node by gv_node handle", async () => {
     const cubeName = testName("xp_remove");
     await c.call("create_entity", { kind: "object", type_id: "cube", name: cubeName });

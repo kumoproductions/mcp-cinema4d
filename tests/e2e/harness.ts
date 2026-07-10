@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,8 +12,31 @@ const SERVER_ENTRY = path.join(REPO_ROOT, "dist", "index.js");
 
 export const TEST_PREFIX = "e2e_";
 
+/** Newest mtime (ms) of any file under `dir`, or 0 if the dir is missing. */
+function newestMtimeMs(dir: string): number {
+  let newest = 0;
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    const mtime = entry.isDirectory() ? newestMtimeMs(full) : statSync(full).mtimeMs;
+    if (mtime > newest) newest = mtime;
+  }
+  return newest;
+}
+
 function ensureBuilt(): void {
-  if (existsSync(SERVER_ENTRY)) return;
+  // Rebuild when dist is missing OR stale — otherwise a run right after editing
+  // a tool (e.g. adding one) would spawn the old build and fail confusingly
+  // ("unknown tool …") instead of testing the current source.
+  const stale =
+    !existsSync(SERVER_ENTRY) ||
+    newestMtimeMs(path.join(REPO_ROOT, "src")) > statSync(SERVER_ENTRY).mtimeMs;
+  if (!stale) return;
   const r = spawnSync("npm", ["run", "build"], { cwd: REPO_ROOT, stdio: "inherit", shell: true });
   if (r.status !== 0) {
     throw new Error("failed to build MCP server before tests");
