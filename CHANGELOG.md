@@ -3,6 +3,97 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.4.0] - 2026-07-11
+
+### Added
+
+- **Timeline marker tools** — full create/read/edit/delete for document
+  timeline markers (TLMarker), which previously could only be dropped as
+  unnamed markers via the "Create Marker at Current Frame" command and could
+  not be read back. `create_marker` adds a named marker at a `frame` (or
+  `time_seconds`) with optional `color` and `length_frames` in one call
+  (`c4d.documents.AddMarker`). `list_markers` enumerates every marker with its
+  frame, time, name, colour and length, each carrying an `index` handle.
+  `set_marker` renames / recolours / moves / resizes a marker selected by
+  `index`, `frame` or `name`. `remove_marker` deletes one marker or, with
+  `all:true`, clears them. `get_document_state` now also reports a
+  `marker_count` so callers know whether any markers exist before listing.
+- **`{kind:"layer"}` handle** — LayerObjects now flow through the generic
+  `describe` / `get_params` / `set_params` / `get_container` pipeline, not only
+  the bespoke layer tools.
+- **MCP tool annotations** — every tool now advertises `readOnlyHint` /
+  `destructiveHint` so clients can distinguish readers (`list_*`, `get_*`,
+  `ping`, …) from mutators (`remove_*`, `delete_*`, `reset_scene`,
+  `close_document`).
+
+### Security
+
+- **`batch` can no longer bypass the `exec_python` opt-in.** With
+  `C4D_MCP_ENABLE_EXEC_PYTHON` unset on the MCP server, `batch` rejects an
+  `exec_python` op instead of forwarding it to the bridge — the documented
+  "both sides must opt in" contract now actually holds. (The bridge already
+  enforced its own side per call.)
+- **Windows socket hardening.** The bridge binds with `SO_EXCLUSIVEADDRUSE`
+  instead of `SO_REUSEADDR`, so a second process (or a hijacker, since the
+  token is optional) can no longer bind the in-use port and steal connections.
+- Handler results are made JSON-safe on the main thread rather than on the TCP
+  thread, so a live `c4d` node returned by `exec_python` is never read
+  (`GetName`) off-thread while the main thread may be mutating it.
+
+### Fixed
+
+- **Undo correctness sweep.** `AddUndo` now precedes the mutation it records,
+  and every `StartUndo`/`EndUndo` bracket registers one, across
+  `set_keyframe`, `modeling_command` (in-place ops), `create_render_data`,
+  `create_take`, `take_override`, `add_user_data` / `remove_user_data`, and the
+  Xpresso graph / port / node handlers (`GvNodeMaster.AddUndo()` before edits;
+  auto-created Xpresso tags recorded as `UNDOTYPE_NEW`). Ctrl+Z now reverts
+  these where it previously did nothing.
+- **`import_scene`** identifies merged objects by node equality instead of the
+  `id()` of transient Python wrappers, fixing silent mis-attribution
+  (objects vanishing from the result, or existing objects getting reparented /
+  renamed).
+- **`save_document`** only rewrites the document's path/name for native `.c4d`
+  saves, so an `fbx`/`obj`/`abc`/… export no longer hijacks the next Ctrl+S and
+  orphans the original scene.
+- **`set_mesh`** validates polygon arity and index range before mutating and
+  rejects `polygons` on a non-`PolygonObject` — out-of-range `CPolygon` indices
+  otherwise crash C4D on draw/render.
+- **`remove_entity`** rejects non-document-owned `plugin_options` handles and
+  guards a missing document; the `set_params` `plugin_options` undo guard now
+  applies down the whole owner chain.
+- **`create_render_data`** compares the render-data parent by node identity
+  (was `is not`, which re-parented on every update) and converts frame ranges
+  with the render data's own fps.
+- **`create_take`** honours `clear_camera` / `clear_render_data` without the
+  sibling key present; `take_override` writes the value before `UpdateSceneNode`
+  and forces an `ExecutePasses` before reading Main-take values on clear.
+- **`set_keyframe`** None-checks `CCurve.AddKey`; `render` and `set_document`
+  reject a missing render data / non-camera cleanly; `list_entities kind=take`
+  no longer dereferences a null `TakeData`.
+- **`preview_render`** top/bottom views now match C4D's editor Top view (+X to
+  the right, +Z up).
+- **Client robustness.** The socket stream is decoded with `StringDecoder`
+  (multi-byte names split across TCP chunks are no longer corrupted); malformed
+  response lines are logged instead of turning into opaque timeouts; a socket
+  error destroys the connection so the next request reconnects; the client
+  sends `timeout_ms` so the bridge's main-thread wait matches long ops
+  (e.g. heavy renders) instead of hitting a fixed 60 s cap.
+- The MCP server reports its real package version (was hardcoded `0.1.0`) and
+  validates the port with `Number.isInteger`.
+- Handle-resolution errors read as "handle requires 'name'" instead of a raw
+  `KeyError`.
+
+### Internal
+
+- CI typechecks and runs the test suite (e2e suites self-skip without a live
+  C4D); the release workflow gates publishing on `npm run check` + tests and
+  pins `mcp-publisher`; the test harness rebuilds a stale `dist/`; pre-commit
+  formatters run sequentially to avoid a same-file race; added e2e coverage for
+  `reset_scene` and `set_xpresso_port`.
+
 ## [0.3.1] - 2026-06-17
 
 ### Fixed
