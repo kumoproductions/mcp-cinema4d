@@ -17,6 +17,7 @@ from typing import Any
 
 import c4d
 
+from .handlers._helpers import _json_safe
 from .log import log
 
 HandlerFn = Callable[[dict[str, Any]], Any]
@@ -86,7 +87,11 @@ class Dispatcher:
             pending.event.set()
             return
         try:
-            pending.result = handler(pending.params or {})
+            # Sanitize on the main thread. If a handler (e.g. exec_python)
+            # returns a live c4d node, _json_safe reads GetName()/GetTypeName()
+            # off it — a scene-API call that must not happen on the TCP thread
+            # in _encode, where the main thread could be mutating that node.
+            pending.result = _json_safe(handler(pending.params or {}))
         except Exception as exc:
             # Return only the short form to the client — tracebacks include
             # absolute filesystem paths, user names, and scene paths that the

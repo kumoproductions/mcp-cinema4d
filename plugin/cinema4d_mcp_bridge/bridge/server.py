@@ -63,7 +63,16 @@ class BridgeServer:
                 return
         self._stop_event.clear()
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # On Windows SO_REUSEADDR lets a *second* process bind a port that is
+        # already being listened on, so a stray C4D instance (or a hijacker —
+        # the token is optional) could silently steal connections. Prefer
+        # SO_EXCLUSIVEADDRUSE there, which forbids that while still failing
+        # cleanly on a genuine double-bind. Elsewhere keep SO_REUSEADDR for the
+        # usual TIME_WAIT quick-restart behaviour.
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        else:
+            self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._server_socket.bind((self._host, self._port))
         self._server_socket.listen(8)
         self._server_socket.settimeout(1.0)
@@ -107,11 +116,13 @@ class BridgeServer:
         buffer = b""
         try:
             while not self._stop_event.is_set():
-                chunk = client_socket.recv(4096)
+                chunk = client_socket.recv(65536)
                 if not chunk:
                     log(f"client {addr} disconnected")
                     break
-                log(f"recv {len(chunk)} bytes from {addr}")
+                # Deliberately no per-chunk log: a single set_mesh payload can be
+                # hundreds of MB (see _MAX_LINE_BYTES), and one file-locked log
+                # write per recv would dominate the transfer time.
                 buffer += chunk
                 # Guard against an authenticated caller that never sends a
                 # newline: without this cap the buffer grows until the C4D
@@ -184,12 +195,25 @@ class BridgeServer:
                 {"id": request_id, "status": "error", "error": "missing 'command' field"}
             )
 
-        pending = self._dispatcher.submit(command, params)
+        # Let the caller extend the main-thread wait for genuinely long ops
+        # (heavy render / CallCommand). Without this the fixed 60 s cap returns
+        # a timeout error while the op keeps running invisibly. Falls back to
+        # the dispatcher default when the field is absent or invalid.
+        timeout_ms = msg.get("timeout_ms")
+        submit_kwargs = {}
+        is_number = isinstance(timeout_ms, (int, float)) and not isinstance(timeout_ms, bool)
+        if is_number and timeout_ms > 0:
+            submit_kwargs["timeout"] = float(timeout_ms) / 1000.0
+
+        pending = self._dispatcher.submit(command, params, **submit_kwargs)
         if pending.error:
             return self._encode({"id": request_id, "status": "error", "error": pending.error})
         return self._encode({"id": request_id, "status": "ok", "result": pending.result})
 
     @staticmethod
     def _encode(payload) -> bytes:
-        # Sanitize via _json_safe so C4D objects don't leak through as repr().
+        # Results are already sanitized on the main thread (Dispatcher._run_one);
+        # this pass is an idempotent belt-and-suspenders over the plain-string
+        # error/status envelopes and must not encounter a live C4D object here
+        # on the TCP thread.
         return (json.dumps(_json_safe(payload)) + "\n").encode("utf-8")
