@@ -41,6 +41,7 @@ export const handleSchema: z.ZodTypeAny = z.lazy(() =>
     z.object({ kind: z.literal("render_data"), name: z.string() }),
     z.object({ kind: z.literal("take"), name: z.string() }),
     z.object({ kind: z.literal("material"), name: z.string() }),
+    z.object({ kind: z.literal("layer"), name: z.string() }),
     z
       .object({
         kind: z.literal("tag"),
@@ -102,5 +103,21 @@ export const handleSchema: z.ZodTypeAny = z.lazy(() =>
   ]),
 );
 
+// Each DescID path segment is one of:
+//   - an int id (common case)
+//   - "x" | "y" | "z" (vector sub-component)
+//   - [id, "real"|"long"|"bool"|"vector"] (explicit dtype alias)
+//   - [id, dtype_int, creator_int] (bridge-internal DescLevel echo, emitted
+//     by list_user_data so callers can pipe that shape straight back)
+// Shared by get_params / set_params / take_override so the schema can't drift.
+export const pathSegment = z.union([
+  z.number().int(),
+  z.enum(["x", "y", "z"]),
+  z.tuple([z.union([z.number().int(), z.enum(["x", "y", "z"])]), z.string()]),
+  z.array(z.number().int()).min(2).max(3),
+]);
+
+export const pathSchema = z.union([z.number().int(), z.array(pathSegment).min(1)]);
+
 export const handleDescription =
-  'C4D entity handle. Shapes: {kind:"object",name?|path?}, {kind:"render_data",name}, {kind:"take",name}, {kind:"material",name}, {kind:"tag",object?|object_path?,type_id?,tag_name?}, {kind:"video_post",render_data,type_id}, {kind:"shader",owner:<handle>,index}, {kind:"gv_node",tag:<tag handle>,id?|name?} (Xpresso GvNode; use list_xpresso_nodes to discover stable path ids — GvNode inherits BaseList2D so set_params/get_params/describe work on it), {kind:"plugin_options",plugin_id,plugin_type?} (plugin_id accepts an int or a format alias like "abc"/"fbx"/"obj"/"usd"/"gltf"; plugin_type defaults to "scene_saver"; resolves to the plugin\'s settings BaseList2D — describe+set_params it to configure exporter options before save_document). Prefer `path` over `name` when names are not unique.';
+  'C4D entity handle. Shapes: {kind:"object",name?|path?}, {kind:"render_data",name}, {kind:"take",name}, {kind:"material",name}, {kind:"layer",name}, {kind:"tag",object?|object_path?,type_id?,tag_name?}, {kind:"video_post",render_data,type_id}, {kind:"shader",owner:<handle>,index}, {kind:"gv_node",tag:<tag handle>,id?|name?} (Xpresso GvNode; use list_xpresso_nodes to discover stable path ids — GvNode inherits BaseList2D so set_params/get_params/describe work on it), {kind:"plugin_options",plugin_id,plugin_type?} (plugin_id accepts an int or a format alias like "abc"/"fbx"/"obj"/"usd"/"gltf"; plugin_type defaults to "scene_saver"; resolves to the plugin\'s settings BaseList2D — describe+set_params it to configure exporter options before save_document). Prefer `path` over `name` when names are not unique.';

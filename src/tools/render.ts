@@ -6,7 +6,7 @@ export const renderTool = defineTool({
   group: "basics",
   title: "Render Active Document",
   description:
-    "Render the active Cinema 4D document at its currently-active render data settings. To change resolution / renderer / frame range / etc., adjust the active RenderData first via `create_render_data` (with `update_if_exists:true` on the active RD) or `set_params`. May take up to 60 seconds.",
+    "Render the active Cinema 4D document at its currently-active render data settings. To change resolution / renderer / frame range / etc., adjust the active RenderData first via `create_render_data` (with `update_if_exists:true` on the active RD) or `set_params`. The request times out after 180 seconds; heavier renders that exceed that keep running in C4D but the call returns a timeout.",
   inputShape: {
     output_path: z
       .string()
