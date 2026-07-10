@@ -155,6 +155,15 @@ def handle_modeling_command(params: dict[str, Any]) -> dict[str, Any]:
 
     doc.StartUndo()
     try:
+        # In-place commands (subdivide, triangulate, optimize, reverse_normals,
+        # …) mutate the source topology directly, so AddUndo(CHANGE) must be
+        # recorded before the command runs — otherwise Ctrl+Z can't revert it.
+        # Producing commands record NEW/DELETE undos for what they create or
+        # replace below instead.
+        if not _is_producing_command(cmd):
+            for obj in resolved:
+                doc.AddUndo(c4d.UNDOTYPE_CHANGE, obj)
+
         result = c4d_utils.SendModelingCommand(
             command=cmd,
             list=resolved,

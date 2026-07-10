@@ -122,12 +122,18 @@ def _resolve_xpresso_tag(h: dict[str, Any], *, create_if_missing: bool = False):
                 f"object {obj.GetName()!r} has no Xpresso tag "
                 "(pass create_tag_if_missing:true to create one)"
             )
-        doc = documents.GetActiveDocument()
-        if doc is not None:
-            doc.AddUndo(c4d.UNDOTYPE_CHANGE, obj)
         tag = obj.MakeTag(c4d.Texpresso)
         if tag is None:
             raise RuntimeError(f"MakeTag(Texpresso) failed on {obj.GetName()!r}")
+        # Record the new tag in its own undo step. The old code called AddUndo
+        # outside any StartUndo/EndUndo bracket (the caller opens its bracket
+        # only after this returns), which is undefined; and UNDOTYPE_NEW on the
+        # tag is the correct type, not CHANGE on the object.
+        doc = documents.GetActiveDocument()
+        if doc is not None:
+            doc.StartUndo()
+            doc.AddUndo(c4d.UNDOTYPE_NEW, tag)
+            doc.EndUndo()
         return tag
     raise ValueError(f"expected tag or object handle for Xpresso target, got kind={kind!r}")
 
@@ -383,8 +389,13 @@ def handle_list_xpresso_nodes(params: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("Xpresso tag has no NodeMaster")
     root = master.GetRoot()
     if root is None:
+        empty_owner = tag.GetObject()
         return {
-            "tag": {"kind": "tag", "object": tag.GetObject().GetName(), "type_id": c4d.Texpresso},
+            "tag": {
+                "kind": "tag",
+                "object": empty_owner.GetName() if empty_owner is not None else None,
+                "type_id": c4d.Texpresso,
+            },
             "nodes": [],
         }
     owner = tag.GetObject()
@@ -500,6 +511,11 @@ def handle_apply_xpresso_graph(params: dict[str, Any]) -> dict[str, Any]:
     if doc is not None:
         doc.StartUndo()
         doc.AddUndo(c4d.UNDOTYPE_CHANGE, tag)
+        # Snapshot the node graph BEFORE editing it. GvNodeMaster.AddUndo()
+        # records current state, so it must precede the create/connect passes;
+        # the old code called it at the end, making undo a no-op.
+        with contextlib.suppress(Exception):
+            master.AddUndo()
 
     created: dict[str, Any] = {}  # caller_id -> {node, path, parent_path, operator_id}
     per_node_errors: dict[str, list[dict[str, Any]]] = {}
@@ -617,9 +633,6 @@ def handle_apply_xpresso_graph(params: dict[str, Any]) -> dict[str, Any]:
                 }
             )
 
-        if doc is not None:
-            with contextlib.suppress(Exception):
-                master.AddUndo()
     finally:
         if doc is not None:
             doc.EndUndo()
@@ -726,6 +739,12 @@ def handle_set_xpresso_port(params: dict[str, Any]) -> dict[str, Any]:
     doc = documents.GetActiveDocument()
     if doc is not None:
         doc.StartUndo()
+        # Snapshot the node graph before the port surgery so Ctrl+Z can revert
+        # add/remove/connect/disconnect/set_value.
+        master = node.GetNodeMaster()
+        if master is not None:
+            with contextlib.suppress(Exception):
+                master.AddUndo()
 
     try:
         if action == "add":
@@ -839,9 +858,10 @@ def handle_remove_xpresso_node(params: dict[str, Any]) -> dict[str, Any]:
         doc.StartUndo()
     try:
         try:
-            node.Remove()
+            # Snapshot before removing so undo can restore the node.
             with contextlib.suppress(Exception):
                 master.AddUndo()
+            node.Remove()
             removed = True
         except Exception as exc:
             raise RuntimeError(f"{type(exc).__name__}: {exc}") from exc

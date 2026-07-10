@@ -65,12 +65,25 @@ def handle_create_render_data(params: dict[str, Any]) -> dict[str, Any]:
 
     doc.StartUndo()
     try:
+        if not created:
+            # Snapshot the existing RenderData before any mutation below.
+            # AddUndo records the current state, so it must run first — the old
+            # code took the snapshot at the end, making undo a no-op.
+            doc.AddUndo(c4d.UNDOTYPE_CHANGE, rd)
+
         fps = doc.GetFps()
         if "fps" in params and params["fps"] is not None:
             fps = int(params["fps"])
             rd[c4d.RDATA_FRAMERATE] = float(fps)
             rd[c4d.RDATA_LOCKRATIO] = False
-            rd[5023] = False  # RDATA_USEPROJECTFRAMERATE
+            # RDATA_USEPROJECTFRAMERATE (5023 on builds that omit the constant).
+            rd[getattr(c4d, "RDATA_USEPROJECTFRAMERATE", 5023)] = False
+        elif not created:
+            # Convert frame_start/end against the RD's OWN framerate, not the
+            # document's, when the caller isn't changing fps this call.
+            rd_fps = rd[c4d.RDATA_FRAMERATE]
+            if rd_fps:
+                fps = int(rd_fps)
 
         if "width" in params and params["width"] is not None:
             rd[c4d.RDATA_XRES] = float(params["width"])
@@ -109,12 +122,13 @@ def handle_create_render_data(params: dict[str, Any]) -> dict[str, Any]:
                 # GeListNode parent pointer to nest it under parent_rd.
                 rd.InsertUnder(parent_rd)
             doc.AddUndo(c4d.UNDOTYPE_NEW, rd)
-        else:
-            if parent_rd is not None and rd.GetUp() is not parent_rd:
-                doc.AddUndo(c4d.UNDOTYPE_HIERARCHY_PSR, rd)
-                rd.Remove()
-                rd.InsertUnder(parent_rd)
-            doc.AddUndo(c4d.UNDOTYPE_CHANGE, rd)
+        elif parent_rd is not None and rd.GetUp() != parent_rd:
+            # `!=` (node compare), not `is not`: GetUp() returns a fresh wrapper
+            # each call, so `is not` was always true and re-parented every
+            # update. The CHANGE snapshot was already taken at the top.
+            doc.AddUndo(c4d.UNDOTYPE_HIERARCHY_PSR, rd)
+            rd.Remove()
+            rd.InsertUnder(parent_rd)
 
         if bool(params.get("make_active", False)):
             doc.SetActiveRenderData(rd)

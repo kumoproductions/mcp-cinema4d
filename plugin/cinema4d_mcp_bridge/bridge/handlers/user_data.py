@@ -20,8 +20,21 @@ import contextlib
 from typing import Any
 
 import c4d
+from c4d import documents
 
 from ._helpers import _json_safe, _resolve_handle
+
+
+def _undo_doc(h: Any):
+    """Return the active document to wrap UD edits in undo, or None to skip it.
+
+    Skips plugin_options handles: those BaseList2Ds live outside any document,
+    and AddUndo on a non-doc-owned node destabilises C4D 2026 (same reason
+    set_params guards them)."""
+    if isinstance(h, dict) and h.get("kind") == "plugin_options":
+        return None
+    return documents.GetActiveDocument()
+
 
 _DTYPE_ALIASES: dict[str, int] = {
     "real": c4d.DTYPE_REAL,
@@ -136,20 +149,28 @@ def handle_add_user_data(params: dict[str, Any]) -> dict[str, Any]:
             with contextlib.suppress(Exception):
                 bc[desc_const] = params[key]
 
-    did = obj.AddUserData(bc)
-    if did is None:
-        raise RuntimeError("AddUserData returned None")
+    doc = _undo_doc(h)
+    if doc is not None:
+        doc.StartUndo()
+        doc.AddUndo(c4d.UNDOTYPE_CHANGE, obj)
+    try:
+        did = obj.AddUserData(bc)
+        if did is None:
+            raise RuntimeError("AddUserData returned None")
 
-    value = params.get("value")
-    if value is not None:
-        coerced = value
-        if (
-            dtype in (c4d.DTYPE_VECTOR, c4d.DTYPE_COLOR)
-            and isinstance(value, (list, tuple))
-            and len(value) == 3
-        ):
-            coerced = c4d.Vector(float(value[0]), float(value[1]), float(value[2]))
-        obj[did] = coerced
+        value = params.get("value")
+        if value is not None:
+            coerced = value
+            if (
+                dtype in (c4d.DTYPE_VECTOR, c4d.DTYPE_COLOR)
+                and isinstance(value, (list, tuple))
+                and len(value) == 3
+            ):
+                coerced = c4d.Vector(float(value[0]), float(value[1]), float(value[2]))
+            obj[did] = coerced
+    finally:
+        if doc is not None:
+            doc.EndUndo()
 
     c4d.EventAdd()
 
@@ -207,6 +228,14 @@ def handle_remove_user_data(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"target does not support RemoveUserData: {type(obj).__name__}")
 
     did = _list_to_descid(desc_id)
-    ok = obj.RemoveUserData(did)
+    doc = _undo_doc(h)
+    if doc is not None:
+        doc.StartUndo()
+        doc.AddUndo(c4d.UNDOTYPE_CHANGE, obj)
+    try:
+        ok = obj.RemoveUserData(did)
+    finally:
+        if doc is not None:
+            doc.EndUndo()
     c4d.EventAdd()
     return {"removed": bool(ok), "desc_id": desc_id}

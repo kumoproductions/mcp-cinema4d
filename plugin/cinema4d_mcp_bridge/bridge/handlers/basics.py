@@ -139,7 +139,10 @@ def handle_render(params: dict[str, Any]) -> dict[str, Any]:
     if doc is None:
         raise RuntimeError("no active document")
 
-    rd = doc.GetActiveRenderData().GetClone()
+    active_rd = doc.GetActiveRenderData()
+    if active_rd is None:
+        raise RuntimeError("no active render data")
+    rd = active_rd.GetClone()
     if rd is None:
         raise RuntimeError("failed to clone active render data")
 

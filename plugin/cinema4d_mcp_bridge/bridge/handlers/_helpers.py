@@ -441,6 +441,27 @@ def _resolve_plugin_options(h: dict[str, Any]):
     return op.get("imexporter")
 
 
+def _find_layer(name: str):
+    """Find a LayerObject by name under the active document's layer root."""
+    doc = documents.GetActiveDocument()
+    if doc is None:
+        return None
+    root = doc.GetLayerObjectRoot()
+    if root is None:
+        return None
+    stack = [root.GetDown()]
+    while stack:
+        n = stack.pop()
+        while n is not None:
+            if isinstance(n, c4d.documents.LayerObject) and n.GetName() == name:
+                return n
+            down = n.GetDown()
+            if down is not None:
+                stack.append(down)
+            n = n.GetNext()
+    return None
+
+
 def _resolve_handle(h) -> Any:
     """Resolve a handle dict to a C4D entity. Returns None if not found.
 
@@ -450,6 +471,7 @@ def _resolve_handle(h) -> Any:
       {kind:"render_data", name}
       {kind:"take", name}
       {kind:"material", name}
+      {kind:"layer", name}
       {kind:"tag", object, type_id?, tag_name?}
       {kind:"video_post", render_data, type_id}
       {kind:"shader", owner:<handle>, index}
@@ -461,14 +483,23 @@ def _resolve_handle(h) -> Any:
     if not isinstance(h, dict):
         raise ValueError(f"handle must be a dict, got {type(h).__name__}")
     kind = h.get("kind")
+
+    def _req(key: str) -> Any:
+        v = h.get(key)
+        if v is None:
+            raise ValueError(f"{kind} handle requires {key!r}")
+        return v
+
     if kind == "object":
         return _resolve_object_handle(h)
     if kind == "render_data":
-        return _find_render_data(h["name"])
+        return _find_render_data(_req("name"))
     if kind == "take":
-        return _find_take(h["name"])
+        return _find_take(_req("name"))
     if kind == "material":
-        return _find_material(h["name"])
+        return _find_material(_req("name"))
+    if kind == "layer":
+        return _find_layer(_req("name"))
     if kind == "tag":
         owner_name = h.get("object")
         owner_path = h.get("object_path")
@@ -482,12 +513,12 @@ def _resolve_handle(h) -> Any:
             return None
         return _find_tag(obj, type_id=h.get("type_id"), name=h.get("tag_name"))
     if kind == "video_post":
-        rd = _find_render_data(h["render_data"])
+        rd = _find_render_data(_req("render_data"))
         if rd is None:
             return None
-        return _find_videopost(rd, int(h["type_id"]))
+        return _find_videopost(rd, int(_req("type_id")))
     if kind == "shader":
-        owner = _resolve_handle(h["owner"])
+        owner = _resolve_handle(_req("owner"))
         if owner is None:
             return None
         # Prefer name when provided — survives shader-chain reordering, which
