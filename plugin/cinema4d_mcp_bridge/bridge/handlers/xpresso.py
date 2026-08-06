@@ -395,6 +395,7 @@ def handle_list_xpresso_nodes(params: dict[str, Any]) -> dict[str, Any]:
                 "kind": "tag",
                 "object": empty_owner.GetName() if empty_owner is not None else None,
                 "type_id": c4d.Texpresso,
+                "tag_name": tag.GetName() or None,
             },
             "nodes": [],
         }

@@ -23,7 +23,12 @@ function newestMtimeMs(dir: string): number {
   }
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
-    const mtime = entry.isDirectory() ? newestMtimeMs(full) : statSync(full).mtimeMs;
+    let mtime: number;
+    try {
+      mtime = entry.isDirectory() ? newestMtimeMs(full) : statSync(full).mtimeMs;
+    } catch {
+      continue; // file vanished between readdir and stat — skip it
+    }
     if (mtime > newest) newest = mtime;
   }
   return newest;

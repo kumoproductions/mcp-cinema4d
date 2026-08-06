@@ -130,13 +130,22 @@ export class C4DClient {
     // following 'error'.
     this.socket?.destroy();
     this.socket = null;
+    this.resetReceiveState();
     this.failAllPending(new Error(`C4D bridge socket error: ${err.message}`));
   }
 
   private onSocketClose(): void {
     this.socket = null;
-    this.buffer = "";
+    this.resetReceiveState();
     this.failAllPending(new Error("C4D bridge socket closed"));
+  }
+
+  private resetReceiveState(): void {
+    // A dead connection may leave a partial line in the buffer and partial
+    // multi-byte state in the decoder; either would corrupt the first frames
+    // of the next connection.
+    this.buffer = "";
+    this.decoder = new StringDecoder("utf8");
   }
 
   private failAllPending(err: Error): void {

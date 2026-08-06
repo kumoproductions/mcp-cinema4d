@@ -21,7 +21,7 @@ export const setMarkerTool = defineTool({
     name: z.string().optional().describe("Target by name (errors on ambiguity)."),
     new_name: z.string().optional().describe("New label for the marker."),
     color: z
-      .tuple([z.number(), z.number(), z.number()])
+      .tuple([z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1)])
       .optional()
       .describe("New colour as [r, g, b] floats in 0..1."),
     new_frame: z.number().int().optional().describe("Move the marker to this frame."),

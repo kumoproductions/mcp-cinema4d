@@ -16,7 +16,7 @@ export const createMarkerTool = defineTool({
     time_seconds: z.number().optional().describe("Position in seconds (alternative to frame)."),
     name: z.string().optional().describe("Marker label (default empty)."),
     color: z
-      .tuple([z.number(), z.number(), z.number()])
+      .tuple([z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1)])
       .optional()
       .describe("Marker colour as [r, g, b] floats in 0..1."),
     length_frames: z
