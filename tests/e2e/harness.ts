@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +11,10 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const SERVER_ENTRY = path.join(REPO_ROOT, "dist", "index.js");
 
 export const TEST_PREFIX = "e2e_";
+
+function isEnoent(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException | null)?.code === "ENOENT";
+}
 
 /** Newest mtime (ms) of any file under `dir`, or 0 if the dir is missing. */
 function newestMtimeMs(dir: string): number {
@@ -26,8 +30,9 @@ function newestMtimeMs(dir: string): number {
     let mtime: number;
     try {
       mtime = entry.isDirectory() ? newestMtimeMs(full) : statSync(full).mtimeMs;
-    } catch {
-      continue; // file vanished between readdir and stat — skip it
+    } catch (err) {
+      if (isEnoent(err)) continue; // file vanished between readdir and stat — skip it
+      throw err; // EACCES and friends mean the scan is incomplete — don't rebuild blind
     }
     if (mtime > newest) newest = mtime;
   }
@@ -38,9 +43,15 @@ function ensureBuilt(): void {
   // Rebuild when dist is missing OR stale — otherwise a run right after editing
   // a tool (e.g. adding one) would spawn the old build and fail confusingly
   // ("unknown tool …") instead of testing the current source.
-  const stale =
-    !existsSync(SERVER_ENTRY) ||
-    newestMtimeMs(path.join(REPO_ROOT, "src")) > statSync(SERVER_ENTRY).mtimeMs;
+  // Stat once: a separate existsSync would let the file vanish in between and
+  // turn a missing artifact into a thrown ENOENT instead of a rebuild.
+  let builtMtimeMs: number | null = null;
+  try {
+    builtMtimeMs = statSync(SERVER_ENTRY).mtimeMs;
+  } catch (err) {
+    if (!isEnoent(err)) throw err; // only "not built yet" is expected here
+  }
+  const stale = builtMtimeMs === null || newestMtimeMs(path.join(REPO_ROOT, "src")) > builtMtimeMs;
   if (!stale) return;
   const r = spawnSync("npm", ["run", "build"], { cwd: REPO_ROOT, stdio: "inherit", shell: true });
   if (r.status !== 0) {
