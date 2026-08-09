@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- Japanese README (`README.ja.md`), cross-linked from the English README and
+  shipped in the npm tarball.
+
 ## [0.4.0] - 2026-07-11
 
 ### Added

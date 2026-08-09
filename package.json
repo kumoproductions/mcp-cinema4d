@@ -32,7 +32,8 @@
   "files": [
     "dist",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "README.ja.md"
   ],
   "type": "module",
   "main": "dist/index.js",
