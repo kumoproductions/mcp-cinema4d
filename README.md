@@ -8,6 +8,7 @@
 Let an LLM drive Cinema 4D. **mcp-cinema4d** bridges MCP-compatible clients (Claude Desktop, Claude Code, or any other stdio-capable MCP client) to a running Cinema 4D 2026 session so the model can inspect scene hierarchy, author shots, build node materials, and rig animation through a typed, undo-safe tool layer — not arbitrary Python pasted into a Script Manager.
 
 > [日本語](README.ja.md)
+> [简体中文](README.zh-CN.md)
 
 **Good for:**
 
