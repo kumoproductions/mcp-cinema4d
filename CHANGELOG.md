@@ -3,12 +3,14 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.1]
 
 ### Added
 
 - Japanese README (`README.ja.md`), cross-linked from the English README and
   shipped in the npm tarball.
+- Simplified Chinese README (`README.zh-CN.md`), cross-linked from the English README and
+  shipped in the npm tarball, thanks to @truman-t3.
 
 ## [0.4.0] - 2026-07-11
 
