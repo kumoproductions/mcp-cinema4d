@@ -22,16 +22,17 @@ from typing import Any
 import c4d
 from c4d import documents
 
-from ._helpers import _json_safe, _resolve_handle
+from ._helpers import _handle_is_plugin_options, _json_safe, _resolve_handle
 
 
 def _undo_doc(h: Any):
     """Return the active document to wrap UD edits in undo, or None to skip it.
 
-    Skips plugin_options handles: those BaseList2Ds live outside any document,
-    and AddUndo on a non-doc-owned node destabilises C4D 2026 (same reason
-    set_params guards them)."""
-    if isinstance(h, dict) and h.get("kind") == "plugin_options":
+    Skips plugin_options handles — including anything hung off one via an
+    ``owner`` chain: those BaseList2Ds live outside any document, and AddUndo
+    on a non-doc-owned node destabilises C4D 2026 (same guard, and the same
+    helper, that set_params / remove_entity use)."""
+    if _handle_is_plugin_options(h):
         return None
     return documents.GetActiveDocument()
 
@@ -152,8 +153,11 @@ def handle_add_user_data(params: dict[str, Any]) -> dict[str, Any]:
     doc = _undo_doc(h)
     if doc is not None:
         doc.StartUndo()
-        doc.AddUndo(c4d.UNDOTYPE_CHANGE, obj)
     try:
+        if doc is not None:
+            # Inside the try so a raising AddUndo can't leave the bracket open
+            # — C4D would then fold every later edit into this undo step.
+            doc.AddUndo(c4d.UNDOTYPE_CHANGE, obj)
         did = obj.AddUserData(bc)
         if did is None:
             raise RuntimeError("AddUserData returned None")
@@ -231,8 +235,11 @@ def handle_remove_user_data(params: dict[str, Any]) -> dict[str, Any]:
     doc = _undo_doc(h)
     if doc is not None:
         doc.StartUndo()
-        doc.AddUndo(c4d.UNDOTYPE_CHANGE, obj)
     try:
+        if doc is not None:
+            # Inside the try so a raising AddUndo can't leave the bracket open
+            # — C4D would then fold every later edit into this undo step.
+            doc.AddUndo(c4d.UNDOTYPE_CHANGE, obj)
         ok = obj.RemoveUserData(did)
     finally:
         if doc is not None:

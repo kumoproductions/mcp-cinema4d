@@ -105,7 +105,20 @@ def _coerce_color(value: Any) -> c4d.Vector:
     return c4d.Vector(float(value[0]), float(value[1]), float(value[2]))
 
 
-def _resolve_marker(doc, params: dict[str, Any], markers: list[Any], fps: int) -> Any:
+def _marker_index(markers: list[Any], marker) -> int:
+    """Position of ``marker`` in the chain. Raises if it isn't there.
+
+    The index is the handle ``set_marker`` / ``remove_marker`` accept, so
+    returning a sentinel here would hand the caller something that only fails
+    on the *next* call — fail loudly instead.
+    """
+    for i, m in enumerate(markers):
+        if m == marker:
+            return i
+    raise RuntimeError("marker not found in the document chain after the edit")
+
+
+def _resolve_marker(params: dict[str, Any], markers: list[Any], fps: int) -> Any:
     """Pick one marker by ``index``, ``frame`` or ``name``.
 
     Exactly one selector must be given. ``frame`` / ``name`` error on ambiguity
@@ -198,8 +211,7 @@ def handle_create_marker(params: dict[str, Any]) -> dict[str, Any]:
 
     # Locate the marker in the (post-insert) chain — AddMarker inserts sorted by
     # time, so it is not necessarily last.
-    markers = _iter_markers(doc)
-    index = next((i for i, m in enumerate(markers) if m == marker), -1)
+    index = _marker_index(_iter_markers(doc), marker)
     return _marker_info(marker, fps, index)
 
 
@@ -270,7 +282,7 @@ def handle_set_marker(params: dict[str, Any]) -> dict[str, Any]:
             raise RuntimeError("this C4D build does not expose TLMARKER_LENGTH")
         length_val = c4d.BaseTime(int(params["length_frames"]), fps)
 
-    marker = _resolve_marker(doc, params, _iter_markers(doc), fps)
+    marker = _resolve_marker(params, _iter_markers(doc), fps)
 
     doc.StartUndo()
     try:
@@ -287,8 +299,7 @@ def handle_set_marker(params: dict[str, Any]) -> dict[str, Any]:
         doc.EndUndo()
     c4d.EventAdd()
 
-    markers = _iter_markers(doc)
-    index = next((i for i, m in enumerate(markers) if m == marker), -1)
+    index = _marker_index(_iter_markers(doc), marker)
     return _marker_info(marker, fps, index)
 
 
@@ -313,7 +324,7 @@ def handle_remove_marker(params: dict[str, Any]) -> dict[str, Any]:
     if bool(params.get("all", False)):
         targets = list(markers)
     else:
-        targets = [_resolve_marker(doc, params, markers, fps)]
+        targets = [_resolve_marker(params, markers, fps)]
 
     if not targets:  # all:true on a marker-free document — nothing to undo.
         return {"removed": 0}

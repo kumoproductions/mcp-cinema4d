@@ -302,7 +302,10 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
                             cleared.append(norm)
                         except Exception as exc:
                             errors.append({"path": p, "error": f"{type(exc).__name__}: {exc}"})
-                    if cur_take is not None and cur_take is not take:
+                    # `!=` (node compare), not `is not`: GetCurrentTake() hands
+                    # back a fresh Python wrapper, so `is not` is always true
+                    # and would re-set the take we already restored above.
+                    if cur_take is not None and cur_take != take:
                         td.SetCurrentTake(cur_take)
                         c4d.EventAdd()
     finally:

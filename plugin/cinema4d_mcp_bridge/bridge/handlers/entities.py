@@ -23,6 +23,7 @@ from ._helpers import (
     _find_object,
     _find_object_by_path,
     _find_render_data,
+    _handle_is_plugin_options,
     _json_safe,
     _object_path,
     _path_to_desc_id,
@@ -631,16 +632,6 @@ def handle_create_entity(params: dict[str, Any]) -> dict[str, Any]:
 
     resolved = _resolve_handle(handle)
     return {"handle": handle, "summary": _summary(resolved) if resolved else None}
-
-
-def _handle_is_plugin_options(h: Any) -> bool:
-    """True if this handle — or any handle in its ``owner`` chain — is a
-    plugin_options handle (a BaseList2D not owned by the document)."""
-    if not isinstance(h, dict):
-        return False
-    if h.get("kind") == "plugin_options":
-        return True
-    return _handle_is_plugin_options(h.get("owner"))
 
 
 def handle_remove_entity(params: dict[str, Any]) -> dict[str, Any]:

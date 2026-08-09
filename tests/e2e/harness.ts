@@ -22,8 +22,9 @@ function newestMtimeMs(dir: string): number {
   let entries: import("node:fs").Dirent[];
   try {
     entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return 0;
+  } catch (err) {
+    if (!isEnoent(err)) throw err; // same rule as the stat below: an unreadable
+    return 0; // tree means the scan is incomplete, so don't call it "fresh"
   }
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
@@ -240,7 +241,11 @@ if doc is not None:
     rd = doc.GetFirstRenderData()
     while rd is not None:
         nxt = rd.GetNext()
-        if rd is not active_rd:
+        # Node compare, not identity: GetFirstRenderData()/GetNext() and
+        # GetActiveRenderData() hand back fresh wrappers for the same node,
+        # so "is not" was always true and this dropped the active render
+        # data — which invalidates the document.
+        if active_rd is None or rd != active_rd:
             rd.Remove()
         rd = nxt
     td = doc.GetTakeData()

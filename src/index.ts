@@ -31,7 +31,10 @@ const server = new McpServer({
 
 // Derive MCP behaviour hints from the tool name so clients that gate on them
 // can tell readers from mutators without annotating all ~70 tools by hand.
-const READ_ONLY_NAMES = new Set(["ping", "describe", "dump_shader", "sample_transform"]);
+// `sample_transform` is deliberately NOT here: it drives the playhead
+// (SetTime + ExecutePasses) to evaluate each frame, and with
+// `restore_time:false` leaves it moved — not a read-only operation.
+const READ_ONLY_NAMES = new Set(["ping", "describe", "dump_shader"]);
 const DESTRUCTIVE_NAMES = new Set(["reset_scene", "close_document"]);
 
 function annotationsFor(name: string): { readOnlyHint?: boolean; destructiveHint?: boolean } {

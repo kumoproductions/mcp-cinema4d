@@ -30,6 +30,11 @@ _TRUTHY = frozenset({"1", "true", "yes", "on"})
 # or runaway clients, not a throughput limit.
 _MAX_LINE_BYTES = 256 * 1024 * 1024
 
+# Upper bound on the client-supplied ``timeout_ms``. Generous enough for the
+# longest legitimate op (a heavy render), short enough that a bogus value can't
+# park a client thread for the whole C4D session.
+_MAX_WAIT_SECONDS = 3600.0
+
 
 class BridgeServer:
     def __init__(
@@ -62,7 +67,7 @@ class BridgeServer:
                 )
                 return
         self._stop_event.clear()
-        self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # On Windows SO_REUSEADDR lets a *second* process bind a port that is
         # already being listened on, so a stray C4D instance (or a hijacker —
         # the token is optional) could silently steal connections. Prefer
@@ -70,12 +75,30 @@ class BridgeServer:
         # cleanly on a genuine double-bind. Elsewhere keep SO_REUSEADDR for the
         # usual TIME_WAIT quick-restart behaviour.
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
-            self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         else:
-            self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._server_socket.bind((self._host, self._port))
-        self._server_socket.listen(8)
-        self._server_socket.settimeout(1.0)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Bind before publishing the socket on self: a failed bind used to leave
+        # a dead, unclosed socket in the field while start() raised into the
+        # .pyp's bare `except`, which prints a traceback and moves on — so the
+        # bridge silently never listened and every call reported "cannot
+        # connect". Close it here and say what to do instead.
+        try:
+            sock.bind((self._host, self._port))
+            sock.listen(8)
+        except OSError as exc:
+            sock.close()
+            log(
+                f"cannot bind {self._host}:{self._port}: {exc}. "
+                f"Another process may own the port; on Windows this also happens "
+                f"for a few minutes after a C4D restart while the previous "
+                f"connections sit in TIME_WAIT (SO_EXCLUSIVEADDRUSE will not "
+                f"rebind over them). Wait and re-run the bridge's start command, "
+                f"or set C4D_MCP_PORT to a free port."
+            )
+            raise
+        sock.settimeout(1.0)
+        self._server_socket = sock
         self._accept_thread = threading.Thread(
             target=self._accept_loop, name="c4d-mcp-bridge-accept", daemon=True
         )
@@ -203,7 +226,9 @@ class BridgeServer:
         submit_kwargs = {}
         is_number = isinstance(timeout_ms, (int, float)) and not isinstance(timeout_ms, bool)
         if is_number and timeout_ms > 0:
-            submit_kwargs["timeout"] = float(timeout_ms) / 1000.0
+            # Clamped: an absurd value would park this client thread (and its
+            # socket) for the life of the C4D session.
+            submit_kwargs["timeout"] = min(float(timeout_ms) / 1000.0, _MAX_WAIT_SECONDS)
 
         pending = self._dispatcher.submit(command, params, **submit_kwargs)
         if pending.error:
@@ -212,8 +237,9 @@ class BridgeServer:
 
     @staticmethod
     def _encode(payload) -> bytes:
-        # Results are already sanitized on the main thread (Dispatcher._run_one);
-        # this pass is an idempotent belt-and-suspenders over the plain-string
-        # error/status envelopes and must not encounter a live C4D object here
-        # on the TCP thread.
-        return (json.dumps(_json_safe(payload)) + "\n").encode("utf-8")
+        # Results are already sanitized on the main thread (Dispatcher._run_one),
+        # so _json_safe is wired in as json's ``default`` hook rather than as a
+        # second full walk: it costs nothing for an already-safe payload (which
+        # can be hundreds of MB for get_mesh / preview_render) and still catches
+        # anything unexpected without touching a live C4D object off-thread.
+        return (json.dumps(payload, default=_json_safe) + "\n").encode("utf-8")

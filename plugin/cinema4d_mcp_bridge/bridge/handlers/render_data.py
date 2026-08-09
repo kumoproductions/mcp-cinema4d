@@ -8,6 +8,7 @@ agents reach for — resolution, renderer, fps, frame range — plus a generic
 
 from __future__ import annotations
 
+from fractions import Fraction
 from typing import Any
 
 import c4d
@@ -20,6 +21,20 @@ from ._helpers import (
     _summary,
     resolve_renderer,
 )
+
+
+def _frame_time(frame: int, fps: float) -> c4d.BaseTime:
+    """Frame -> BaseTime that survives a fractional framerate.
+
+    ``BaseTime(nom, denom)`` is an exact rational, but RDATA_FRAMERATE is a
+    float and the C4D UI happily stores 29.97 / 23.976 in it. Truncating that
+    to an int puts frame 100 at 100/29 = 3.448 s, which reads back as frame
+    103 at the RD's real rate, so quantise the ratio instead of the rate.
+    """
+    if not fps or fps <= 0:
+        raise ValueError(f"invalid framerate for frame conversion: {fps!r}")
+    ratio = Fraction(float(fps)).limit_denominator(1000)
+    return c4d.BaseTime(frame * ratio.denominator, ratio.numerator)
 
 
 def handle_create_render_data(params: dict[str, Any]) -> dict[str, Any]:
@@ -71,7 +86,7 @@ def handle_create_render_data(params: dict[str, Any]) -> dict[str, Any]:
             # code took the snapshot at the end, making undo a no-op.
             doc.AddUndo(c4d.UNDOTYPE_CHANGE, rd)
 
-        fps = doc.GetFps()
+        fps: float = doc.GetFps()
         if "fps" in params and params["fps"] is not None:
             fps = int(params["fps"])
             rd[c4d.RDATA_FRAMERATE] = float(fps)
@@ -83,7 +98,8 @@ def handle_create_render_data(params: dict[str, Any]) -> dict[str, Any]:
             # document's, when the caller isn't changing fps this call.
             rd_fps = rd[c4d.RDATA_FRAMERATE]
             if rd_fps:
-                fps = int(rd_fps)
+                # Keep the float — 29.97 truncated to 29 shifts the whole range.
+                fps = float(rd_fps)
 
         if "width" in params and params["width"] is not None:
             rd[c4d.RDATA_XRES] = float(params["width"])
@@ -107,9 +123,9 @@ def handle_create_render_data(params: dict[str, Any]) -> dict[str, Any]:
                 rd[c4d.RDATA_FRAMESEQUENCE] = int(seq_value)
 
         if "frame_start" in params and params["frame_start"] is not None:
-            rd[c4d.RDATA_FRAMEFROM] = c4d.BaseTime(int(params["frame_start"]), fps)
+            rd[c4d.RDATA_FRAMEFROM] = _frame_time(int(params["frame_start"]), fps)
         if "frame_end" in params and params["frame_end"] is not None:
-            rd[c4d.RDATA_FRAMETO] = c4d.BaseTime(int(params["frame_end"]), fps)
+            rd[c4d.RDATA_FRAMETO] = _frame_time(int(params["frame_end"]), fps)
 
         extra = params.get("params") or {}
         if extra:

@@ -110,7 +110,7 @@ export const handleSchema: z.ZodTypeAny = z.lazy(() =>
 //   - [id, dtype_int, creator_int] (bridge-internal DescLevel echo, emitted
 //     by list_user_data so callers can pipe that shape straight back)
 // Shared by get_params / set_params / take_override so the schema can't drift.
-export const pathSegment = z.union([
+const pathSegment = z.union([
   z.number().int(),
   z.enum(["x", "y", "z"]),
   z.tuple([z.union([z.number().int(), z.enum(["x", "y", "z"])]), z.string()]),

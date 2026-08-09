@@ -231,7 +231,18 @@ describe.skipIf(!ready)("markers", () => {
     expect(listed.markers.map((m) => m.name)).toEqual([testName("i0")]);
   });
 
-  test("remove_marker all clears every marker", async () => {
+  test("remove_marker all clears every marker", async (ctx) => {
+    // `all:true` is the one destructive call in this suite, and per the
+    // clearTestMarkers note above it must never reach an artist's markers.
+    // beforeEach has already reset the scene and swept our own prefixed
+    // markers, so anything still present belongs to the user — which means
+    // resetScene took the exec_python fallback and we're in a live document.
+    // Skip rather than wipe it.
+    const preexisting = await c.call<{ count: number }>("list_markers");
+    if (preexisting.count > 0) {
+      ctx.skip(`document carries ${preexisting.count} non-test marker(s)`);
+      return;
+    }
     await c.call("create_marker", { frame: 0, name: testName("a") });
     await c.call("create_marker", { frame: 10, name: testName("b") });
     const r = await c.call<{ removed: number }>("remove_marker", { all: true });

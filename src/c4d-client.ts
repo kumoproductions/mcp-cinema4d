@@ -76,8 +76,8 @@ export class C4DClient {
       socket.connect(this.port, this.host, () => {
         socket.setTimeout(0);
         socket.off("error", onError);
-        socket.on("error", (err) => this.onSocketError(err));
-        socket.on("close", () => this.onSocketClose());
+        socket.on("error", (err) => this.onSocketError(socket, err));
+        socket.on("close", () => this.onSocketClose(socket));
         socket.on("data", (chunk) => this.onData(chunk));
         this.socket = socket;
         this.connecting = null;
@@ -124,17 +124,23 @@ export class C4DClient {
     }
   }
 
-  private onSocketError(err: Error): void {
+  private onSocketError(source: net.Socket, err: Error): void {
     // Destroy + drop the socket so the next request reconnects instead of
     // reusing a half-dead one, rather than relying on a 'close' always
     // following 'error'.
-    this.socket?.destroy();
+    source.destroy();
+    // `destroy()` emits 'close' asynchronously, so a dead socket can still
+    // raise events after we reconnected. Ignore anything that isn't the live
+    // connection — otherwise a stale event would drop the new socket and
+    // reject the requests in flight on it.
+    if (this.socket !== source) return;
     this.socket = null;
     this.resetReceiveState();
     this.failAllPending(new Error(`C4D bridge socket error: ${err.message}`));
   }
 
-  private onSocketClose(): void {
+  private onSocketClose(source: net.Socket): void {
+    if (this.socket !== source) return;
     this.socket = null;
     this.resetReceiveState();
     this.failAllPending(new Error("C4D bridge socket closed"));

@@ -270,6 +270,20 @@ def handle_set_mesh(params: dict[str, Any]) -> dict[str, Any]:
                         f"polygon[{i}] references point {int(vi)} "
                         f"out of range (0..{new_points - 1})"
                     )
+    elif isinstance(point_obj, c4d.PolygonObject) and new_points < point_obj.GetPointCount():
+        # Point-only shrink keeps the existing polygons untouched, so any
+        # polygon that referenced a now-removed point is left with an
+        # out-of-range CPolygon index — the same crash-on-draw/render the check
+        # above prevents. Refuse rather than corrupt the mesh.
+        for i in range(point_obj.GetPolygonCount()):
+            cp = point_obj.GetPolygon(i)
+            for vi in (cp.a, cp.b, cp.c, cp.d):
+                if int(vi) >= new_points:
+                    raise ValueError(
+                        f"shrinking to {new_points} points would leave polygon[{i}] "
+                        f"referencing point {int(vi)}; pass 'polygons' to rewrite the "
+                        "topology in the same call"
+                    )
 
     doc.StartUndo()
     try:

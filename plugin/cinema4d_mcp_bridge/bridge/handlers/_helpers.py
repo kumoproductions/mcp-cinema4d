@@ -441,25 +441,49 @@ def _resolve_plugin_options(h: dict[str, Any]):
     return op.get("imexporter")
 
 
-def _find_layer(name: str):
-    """Find a LayerObject by name under the active document's layer root."""
-    doc = documents.GetActiveDocument()
+def _walk_layers(doc) -> list:
+    """Collect every LayerObject under ``doc``'s layer root, in document order."""
+    out: list = []
     if doc is None:
-        return None
+        return out
     root = doc.GetLayerObjectRoot()
     if root is None:
-        return None
+        return out
     stack = [root.GetDown()]
     while stack:
         n = stack.pop()
         while n is not None:
-            if isinstance(n, c4d.documents.LayerObject) and n.GetName() == name:
-                return n
+            if isinstance(n, c4d.documents.LayerObject):
+                out.append(n)
             down = n.GetDown()
             if down is not None:
                 stack.append(down)
             n = n.GetNext()
+    return out
+
+
+def _find_layer(doc, name: str):
+    """Find a LayerObject by name under ``doc``'s layer root. None if absent."""
+    for layer in _walk_layers(doc):
+        if layer.GetName() == name:
+            return layer
     return None
+
+
+def _handle_is_plugin_options(h: Any) -> bool:
+    """True if this handle — or any handle in its ``owner`` chain — is a
+    plugin_options handle (a BaseList2D not owned by the document).
+
+    Callers use this to skip ``StartUndo``/``AddUndo`` on such targets:
+    recording undo for a node no document owns has been observed to
+    destabilise C4D 2026. Shared by ``set_params`` / ``remove_entity`` /
+    the user-data handlers so the guard can't drift between them.
+    """
+    if not isinstance(h, dict):
+        return False
+    if h.get("kind") == "plugin_options":
+        return True
+    return _handle_is_plugin_options(h.get("owner"))
 
 
 def _resolve_handle(h) -> Any:
@@ -499,7 +523,7 @@ def _resolve_handle(h) -> Any:
     if kind == "material":
         return _find_material(_req("name"))
     if kind == "layer":
-        return _find_layer(_req("name"))
+        return _find_layer(documents.GetActiveDocument(), _req("name"))
     if kind == "tag":
         owner_name = h.get("object")
         owner_path = h.get("object_path")
