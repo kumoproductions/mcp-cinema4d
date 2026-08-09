@@ -8,8 +8,32 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    name: Verify before publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install uv (for ruff via uvx)
+        uses: astral-sh/setup-uv@v6
+      - run: npm ci
+      # Gate the whole release on the same quality bar as CI, so tagging a
+      # broken or unreviewed commit can't ship it to npm irrevocably.
+      - name: Check (typecheck / lint / format / docs drift)
+        run: npm run check
+      - name: Test (vitest — e2e suites self-skip without C4D)
+        run: npm test
+
   plugin-zip:
     name: Package bridge plugin
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -41,6 +65,7 @@ jobs:
 
   npm-publish:
     name: Publish to npm
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -104,10 +129,13 @@ jobs:
       - name: Install mcp-publisher
         env:
           GH_TOKEN: ${{ github.token }}
+          # Pinned rather than 'latest' so a bad or malicious upstream release
+          # can't silently enter the publish job. Bump deliberately.
+          MCP_PUBLISHER_VERSION: v1.7.9
         run: |
           set -eu
           mkdir -p "$RUNNER_TEMP/mcp-publisher"
-          gh release download \
+          gh release download "$MCP_PUBLISHER_VERSION" \
             --repo modelcontextprotocol/registry \
             --pattern "mcp-publisher_linux_amd64.tar.gz" \
             --dir "$RUNNER_TEMP/mcp-publisher"

@@ -29,7 +29,9 @@ export const execPythonTool = defineTool({
       .int()
       .positive()
       .optional()
-      .describe("Optional timeout in milliseconds (default 30000)."),
+      .describe(
+        "How long to wait for the result, in milliseconds (default 30000). Bounds the wait, not the execution: code that runs longer keeps blocking C4D's main thread after this returns.",
+      ),
   },
   async handler(args, client) {
     const timeout = args.timeout_ms ?? 30_000;

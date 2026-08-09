@@ -13,6 +13,7 @@ import { closeDocumentTool } from "./close-document.js";
 import { cloneEntityTool } from "./clone-entity.js";
 import { createEntityTool } from "./create-entity.js";
 import { createLayerTool } from "./create-layer.js";
+import { createMarkerTool } from "./create-marker.js";
 import { createRenderDataTool } from "./create-render-data.js";
 import { createTakeTool } from "./create-take.js";
 import { deleteKeyframeTool } from "./delete-keyframe.js";
@@ -36,6 +37,7 @@ import { listGraphNodesTool } from "./list-graph-nodes.js";
 import { listXpressoNodesTool } from "./list-xpresso-nodes.js";
 import { listMographClonesTool } from "./list-mograph-clones.js";
 import { listLayersTool } from "./list-layers.js";
+import { listMarkersTool } from "./list-markers.js";
 import { listPluginsTool } from "./list-plugins.js";
 import { listTracksTool } from "./list-tracks.js";
 import { listUserDataTool } from "./list-user-data.js";
@@ -47,6 +49,7 @@ import { pingTool } from "./ping.js";
 import { previewRenderTool } from "./preview-render.js";
 import { removeEntityTool } from "./remove-entity.js";
 import { removeGraphNodeTool } from "./remove-graph-node.js";
+import { removeMarkerTool } from "./remove-marker.js";
 import { removeUserDataTool } from "./remove-user-data.js";
 import { removeXpressoNodeTool } from "./remove-xpresso-node.js";
 import { renderTool } from "./render.js";
@@ -58,6 +61,7 @@ import { setDocumentTool } from "./set-document.js";
 import { setGraphPortTool } from "./set-graph-port.js";
 import { setKeyframeTool } from "./set-keyframe.js";
 import { setLayerFlagsTool } from "./set-layer-flags.js";
+import { setMarkerTool } from "./set-marker.js";
 import { setMeshTool } from "./set-mesh.js";
 import { setMeshSelectionTool } from "./set-mesh-selection.js";
 import { setParamsTool } from "./set-params.js";
@@ -107,6 +111,10 @@ export const ALL_TOOLS: AnyTool[] = [
   createRenderDataTool,
   createTakeTool,
   takeOverrideTool,
+  createMarkerTool,
+  listMarkersTool,
+  setMarkerTool,
+  removeMarkerTool,
   sampleTransformTool,
   // Selection
   getSelectionTool,

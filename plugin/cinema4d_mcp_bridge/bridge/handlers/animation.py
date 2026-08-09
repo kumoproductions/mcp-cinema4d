@@ -311,6 +311,8 @@ def handle_set_keyframe(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"handle not resolved: {h}")
 
     doc = documents.GetActiveDocument()
+    if doc is None:
+        raise RuntimeError("no active document")
     if fps is None:
         fps = doc.GetFps()
 
@@ -363,8 +365,17 @@ def handle_set_keyframe(params: dict[str, Any]) -> dict[str, Any]:
         if track is None:
             track = c4d.CTrack(obj, did)
             obj.InsertTrackSorted(track)
+            # New track: undo removes it (and its keys) wholesale.
+            doc.AddUndo(c4d.UNDOTYPE_NEW, track)
+        else:
+            # Existing track: snapshot before adding/moving a key so Ctrl+Z
+            # restores the prior curve. AddUndo records current state, so it
+            # must precede the AddKey below.
+            doc.AddUndo(c4d.UNDOTYPE_CHANGE, track)
         curve = track.GetCurve()
         kd = curve.AddKey(c4d.BaseTime(int(frame), int(fps)))
+        if kd is None:
+            raise RuntimeError("CCurve.AddKey returned None (C4D refused the key)")
         key = kd["key"] if isinstance(kd, dict) else kd
         key.SetValue(curve, coerced_value)
         key.SetInterpolation(curve, im[interp_name])

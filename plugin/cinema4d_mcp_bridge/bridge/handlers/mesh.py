@@ -250,12 +250,46 @@ def handle_set_mesh(params: dict[str, Any]) -> dict[str, Any]:
     if doc is None:
         raise RuntimeError("no active document")
 
+    new_points = len(points)
+
+    # Validate topology BEFORE mutating anything. C4D does not range-check
+    # CPolygon indices and will crash on draw/render if a polygon references a
+    # non-existent point, so an out-of-range index must fail cleanly here.
+    if polygons is not None:
+        if not isinstance(point_obj, c4d.PolygonObject):
+            raise ValueError(
+                "polygons provided but target is not a PolygonObject "
+                f"({type(point_obj).__name__}); omit polygons to update points only"
+            )
+        for i, poly in enumerate(polygons):
+            if len(poly) not in (3, 4):
+                raise ValueError(f"polygon[{i}] must have 3 or 4 indices, got {len(poly)}")
+            for vi in poly:
+                if not 0 <= int(vi) < new_points:
+                    raise ValueError(
+                        f"polygon[{i}] references point {int(vi)} "
+                        f"out of range (0..{new_points - 1})"
+                    )
+    elif isinstance(point_obj, c4d.PolygonObject) and new_points < point_obj.GetPointCount():
+        # Point-only shrink keeps the existing polygons untouched, so any
+        # polygon that referenced a now-removed point is left with an
+        # out-of-range CPolygon index — the same crash-on-draw/render the check
+        # above prevents. Refuse rather than corrupt the mesh.
+        for i in range(point_obj.GetPolygonCount()):
+            cp = point_obj.GetPolygon(i)
+            for vi in (cp.a, cp.b, cp.c, cp.d):
+                if int(vi) >= new_points:
+                    raise ValueError(
+                        f"shrinking to {new_points} points would leave polygon[{i}] "
+                        f"referencing point {int(vi)}; pass 'polygons' to rewrite the "
+                        "topology in the same call"
+                    )
+
     doc.StartUndo()
     try:
         doc.AddUndo(c4d.UNDOTYPE_CHANGE, point_obj)
 
-        new_points = len(points)
-        if polygons is not None and isinstance(point_obj, c4d.PolygonObject):
+        if polygons is not None:
             # Resize both channels atomically. ResizeObject keeps existing
             # data where it can, but we overwrite everything below anyway.
             if not point_obj.ResizeObject(new_points, len(polygons)):
@@ -266,13 +300,11 @@ def handle_set_mesh(params: dict[str, Any]) -> dict[str, Any]:
                 if len(poly) == 3:
                     a, b, c_ = int(poly[0]), int(poly[1]), int(poly[2])
                     point_obj.SetPolygon(i, c4d.CPolygon(a, b, c_, c_))
-                elif len(poly) == 4:
+                else:
                     point_obj.SetPolygon(
                         i,
                         c4d.CPolygon(int(poly[0]), int(poly[1]), int(poly[2]), int(poly[3])),
                     )
-                else:
-                    raise ValueError(f"polygon[{i}] must have 3 or 4 indices, got {len(poly)}")
         else:
             # Point-only resize (spline or PolygonObject with preserved topology).
             if new_points != point_obj.GetPointCount():

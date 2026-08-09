@@ -67,24 +67,31 @@ def handle_create_take(params: dict[str, Any]) -> dict[str, Any]:
         if take is None:
             raise RuntimeError(f"AddTake failed for {name!r}")
 
-        if "camera" in params:
-            cam_name = params.get("camera")
-            if cam_name:
-                cam = _find_object(str(cam_name))
-                if cam is None:
-                    raise ValueError(f"camera not found: {cam_name}")
-                take.SetCamera(td, cam)
-            elif params.get("clear_camera"):
-                take.SetCamera(td, None)
-        if "render_data" in params:
-            rd_name = params.get("render_data")
-            if rd_name:
-                rd = _find_render_data(str(rd_name))
-                if rd is None:
-                    raise ValueError(f"render_data not found: {rd_name}")
-                take.SetRenderData(td, rd)
-            elif params.get("clear_render_data"):
-                take.SetRenderData(td, None)
+        # Record undo before mutating. For a new take UNDOTYPE_NEW removes it on
+        # undo (later edits are part of the "new" object); for an existing take
+        # the CHANGE snapshot must precede the SetCamera/SetRenderData/SetChecked
+        # writes below, or undo would restore the already-changed state.
+        if created:
+            doc.AddUndo(c4d.UNDOTYPE_NEW, take)
+        else:
+            doc.AddUndo(c4d.UNDOTYPE_CHANGE, take)
+
+        cam_name = params.get("camera")
+        if cam_name:
+            cam = _find_object(str(cam_name))
+            if cam is None:
+                raise ValueError(f"camera not found: {cam_name}")
+            take.SetCamera(td, cam)
+        elif params.get("clear_camera"):
+            take.SetCamera(td, None)
+        rd_name = params.get("render_data")
+        if rd_name:
+            rd = _find_render_data(str(rd_name))
+            if rd is None:
+                raise ValueError(f"render_data not found: {rd_name}")
+            take.SetRenderData(td, rd)
+        elif params.get("clear_render_data"):
+            take.SetRenderData(td, None)
         if "checked" in params and params["checked"] is not None:
             take.SetChecked(bool(params["checked"]))
         elif created:
@@ -94,11 +101,6 @@ def handle_create_take(params: dict[str, Any]) -> dict[str, Any]:
 
         if bool(params.get("make_active", False)):
             td.SetCurrentTake(take)
-
-        if created:
-            doc.AddUndo(c4d.UNDOTYPE_NEW, take)
-        else:
-            doc.AddUndo(c4d.UNDOTYPE_CHANGE, take)
     finally:
         doc.EndUndo()
     c4d.EventAdd()
@@ -230,7 +232,6 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
                     continue
                 try:
                     descid, norm = _path_to_desc_id(target, entry["path"])
-                    override.UpdateSceneNode(td, descid)
                     value = entry["value"]
                     # Coerce 3-float lists into c4d.Vector for vector-typed params.
                     if (
@@ -243,7 +244,12 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
                         dtype = _param_dtype(target, descid[0].id)
                         if dtype == c4d.DTYPE_VECTOR:
                             value = c4d.Vector(float(value[0]), float(value[1]), float(value[2]))
+                    # Write the override value first, THEN push it into the
+                    # scene node. UpdateSceneNode propagates the override's
+                    # stored data, so calling it before the write pushed the
+                    # stale value and left the live scene wrong.
                     override[descid] = value
+                    override.UpdateSceneNode(td, descid)
                     applied.append({"path": norm, "value": entry["value"]})
                 except Exception as exc:
                     errors.append(
@@ -270,7 +276,10 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
 
                 if resolved:
                     td.SetCurrentTake(main_take)
-                    c4d.EventAdd()
+                    # SetCurrentTake alone doesn't re-evaluate the scene, so the
+                    # reads below would see the outgoing take's values. Force a
+                    # pass to propagate the Main take before reading.
+                    doc.ExecutePasses(None, True, True, True, c4d.BUILDFLAGS_NONE)
                     main_values: dict[int, Any] = {}
                     for idx, (p, descid, _norm) in enumerate(resolved):
                         try:
@@ -293,7 +302,10 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
                             cleared.append(norm)
                         except Exception as exc:
                             errors.append({"path": p, "error": f"{type(exc).__name__}: {exc}"})
-                    if cur_take is not None and cur_take is not take:
+                    # `!=` (node compare), not `is not`: GetCurrentTake() hands
+                    # back a fresh Python wrapper, so `is not` is always true
+                    # and would re-set the take we already restored above.
+                    if cur_take is not None and cur_take != take:
                         td.SetCurrentTake(cur_take)
                         c4d.EventAdd()
     finally:

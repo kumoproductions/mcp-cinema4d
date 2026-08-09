@@ -23,6 +23,7 @@ from ._helpers import (
     _find_object,
     _find_object_by_path,
     _find_render_data,
+    _handle_is_plugin_options,
     _json_safe,
     _object_path,
     _path_to_desc_id,
@@ -134,8 +135,10 @@ def handle_list_entities(params: dict[str, Any]) -> dict[str, Any]:
 
     if kind == "take":
         td = doc.GetTakeData()
+        if td is None:
+            return {"entities": []}
         out = []
-        current_take = td.GetCurrentTake() if td is not None else None
+        current_take = td.GetCurrentTake()
 
         def walk_take(t, depth=0, parent=None):
             rd = t.GetRenderData(td)
@@ -335,8 +338,9 @@ def handle_set_params(params: dict[str, Any]) -> dict[str, Any]:
     # plugin_options resolves to a plugin's private BaseList2D (e.g. Alembic's
     # imexporter) — it lives outside the document, so wrapping writes in
     # StartUndo/AddUndo is both meaningless and has been observed to
-    # destabilise C4D 2026 when the target isn't owned by any doc.
-    use_undo = not (isinstance(h, dict) and h.get("kind") == "plugin_options")
+    # destabilise C4D 2026 when the target isn't owned by any doc. Check the
+    # whole owner chain so a shader/child hung off plugin_options is caught too.
+    use_undo = not _handle_is_plugin_options(h)
 
     applied: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
@@ -634,10 +638,19 @@ def handle_remove_entity(params: dict[str, Any]) -> dict[str, Any]:
     h = params.get("handle")
     if not h:
         raise ValueError("handle required")
+    if _handle_is_plugin_options(h):
+        # Same guard as set_params: AddUndo + Remove on a non-doc-owned plugin
+        # settings object destabilises C4D and would destroy the plugin's
+        # singleton settings for the session.
+        raise ValueError(
+            "remove_entity does not support plugin_options handles (not document-owned)"
+        )
     obj = _resolve_handle(h)
     if obj is None:
         return {"removed": False, "reason": "not found"}
     doc = documents.GetActiveDocument()
+    if doc is None:
+        raise RuntimeError("no active document")
     doc.StartUndo()
     try:
         doc.AddUndo(c4d.UNDOTYPE_DELETE, obj)

@@ -7,6 +7,7 @@
 
 Let an LLM drive Cinema 4D. **mcp-cinema4d** bridges MCP-compatible clients (Claude Desktop, Claude Code, or any other stdio-capable MCP client) to a running Cinema 4D 2026 session so the model can inspect scene hierarchy, author shots, build node materials, and rig animation through a typed, undo-safe tool layer — not arbitrary Python pasted into a Script Manager.
 
+> [日本語](README.ja.md)
 > [简体中文](README.zh-CN.md)
 
 **Good for:**
@@ -105,14 +106,14 @@ To change the bridge socket, set `C4D_MCP_PORT` (and optionally `C4D_MCP_HOST` �
 
 ## Tools
 
-64 tools across 16 groups. The LLM picks tools itself based on the prompt — you rarely invoke them directly. See [docs/TOOLS.md](./docs/TOOLS.md) for the full table with per-tool descriptions.
+68 tools across 16 groups. The LLM picks tools itself based on the prompt — you rarely invoke them directly. See [docs/TOOLS.md](./docs/TOOLS.md) for the full table with per-tool descriptions.
 
 | Group                            | Count | What's in it                                                                                                                                                                                                                       |
 | -------------------------------- | :---: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Basics                           |   4   | `ping`, `render`, `preview_render` (Viewport renderer + Constant Lines, returns inline PNG), `reset_scene`.                                                                                                                        |
 | Script-style                     |   5   | `exec_python` (opt-in), `call_command`, `list_plugins`, `undo`, `batch` — escape hatches + undo-grouped multi-op.                                                                                                                  |
 | Generic CRUD                     |   9   | `list_entities`, `describe`, `get_params`/`set_params`, `get_container`, `dump_shader`, `create_entity`, `remove_entity`, `set_keyframe`.                                                                                          |
-| Shot setup                       |   7   | Document state, fps / frame range / camera, `import_scene` (merge), RenderData + Take, `take_override`, `sample_transform`.                                                                                                        |
+| Shot setup                       |  11   | Document state, fps / frame range / camera, `import_scene` (merge), RenderData + Take, `take_override`, timeline markers (`create_marker` / `list_markers` / `set_marker` / `remove_marker`), `sample_transform`.                  |
 | Selection · Hierarchy            |   4   | Active selection read / write; reparent, reorder, clone.                                                                                                                                                                           |
 | Modeling · Mesh                  |   4   | `modeling_command` (CSO / Make Editable / Connect / Subdivide / …), `get_mesh`, `set_mesh`, `set_mesh_selection`.                                                                                                                  |
 | Document I/O                     |   6   | `save_document`, `open_document`, `new_document`, `list_documents`, `set_active_document` (switch between already-open docs), `close_document` (force-gated for unsaved changes).                                                  |

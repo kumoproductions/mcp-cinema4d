@@ -15,6 +15,20 @@ from c4d import documents
 from ._helpers import _object_path
 
 
+def _marker_count(doc) -> int:
+    """Count document timeline markers without serializing them.
+
+    Full per-marker detail (frame / name / colour) is in ``list_markers``;
+    this is a cheap hint so callers know whether any markers exist at all.
+    """
+    count = 0
+    m = documents.GetFirstMarker(doc)
+    while m is not None:
+        count += 1
+        m = m.GetNext()
+    return count
+
+
 def _active_camera_handle(doc) -> dict[str, Any] | None:
     bd = doc.GetRenderBaseDraw()
     if bd is None:
@@ -70,4 +84,5 @@ def handle_get_document_state(_params: dict[str, Any]) -> dict[str, Any]:
         "active_camera": _active_camera_handle(doc),
         "active_take": _active_take(doc),
         "active_render_data": _active_render_data(doc),
+        "marker_count": _marker_count(doc),
     }

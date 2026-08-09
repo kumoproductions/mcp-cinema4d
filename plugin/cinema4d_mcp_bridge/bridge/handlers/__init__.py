@@ -13,6 +13,7 @@ Submodules (organised by domain, not by workflow):
                    delete_keyframe, delete_track
   transform      — set_transform (write), sample_transform (read)
   takes          — create_take, take_override
+  markers        — create_marker, list_markers, set_marker, remove_marker
   render_data    — create_render_data
   document_io    — save/open/new_document, list_documents,
                    set_active_document, close_document, import_scene,
@@ -80,6 +81,12 @@ from .layers import (
     handle_get_object_layer,
     handle_list_layers,
     handle_set_layer_flags,
+)
+from .markers import (
+    handle_create_marker,
+    handle_list_markers,
+    handle_remove_marker,
+    handle_set_marker,
 )
 from .mesh import (
     handle_get_mesh,
@@ -156,6 +163,10 @@ HANDLERS = {
     "create_render_data": handle_create_render_data,
     "create_take": handle_create_take,
     "take_override": handle_take_override,
+    "create_marker": handle_create_marker,
+    "list_markers": handle_list_markers,
+    "set_marker": handle_set_marker,
+    "remove_marker": handle_remove_marker,
     "sample_transform": handle_sample_transform,
     "get_selection": handle_get_selection,
     "set_selection": handle_set_selection,

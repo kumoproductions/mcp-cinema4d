@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineTool, textResult } from "./define-tool.js";
+import { execPythonEnabled } from "./exec-python.js";
 
 const BATCH_DEFAULT_PER_OP_MS = 3_000;
 const BATCH_BASE_TIMEOUT_MS = 30_000;
@@ -18,7 +19,7 @@ export const batchTool = defineTool({
           op: z
             .string()
             .describe(
-              "Handler name: set_params, create_entity, set_keyframe, remove_entity, describe, get_params, get_container, list_entities, set_document, exec_python. (batch itself is not allowed inside batch.)",
+              "Handler name: set_params, create_entity, set_keyframe, remove_entity, describe, get_params, get_container, list_entities, set_document, etc. (batch itself is not allowed inside batch; exec_python is only accepted when C4D_MCP_ENABLE_EXEC_PYTHON is set on both sides.)",
             ),
           args: z
             .record(z.string(), z.unknown())
@@ -39,6 +40,15 @@ export const batchTool = defineTool({
       .describe("Abort on first error (default false — errors are collected per op)."),
   },
   async handler(args, client) {
+    // Enforce the exec_python opt-in here too: without this guard `batch` would
+    // be a hole straight through the disabled tool, since the bridge dispatches
+    // every op name in its handler table. Keeps the "both sides must opt in"
+    // contract true even for callers that reach exec_python via batch.
+    if (!execPythonEnabled() && args.ops.some((op) => op.op === "exec_python")) {
+      throw new Error(
+        "exec_python is disabled (C4D_MCP_ENABLE_EXEC_PYTHON not set on the MCP server) and cannot be run inside batch either. Enable it on both sides to use it.",
+      );
+    }
     // Outer timeout = base + sum of op budgets (explicit or defaulted), capped.
     const opsBudget = args.ops.reduce(
       (sum, op) => sum + (op.timeout_ms ?? BATCH_DEFAULT_PER_OP_MS),

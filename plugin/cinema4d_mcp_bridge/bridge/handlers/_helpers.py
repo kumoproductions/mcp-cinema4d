@@ -441,6 +441,51 @@ def _resolve_plugin_options(h: dict[str, Any]):
     return op.get("imexporter")
 
 
+def _walk_layers(doc) -> list:
+    """Collect every LayerObject under ``doc``'s layer root, in document order."""
+    out: list = []
+    if doc is None:
+        return out
+    root = doc.GetLayerObjectRoot()
+    if root is None:
+        return out
+    stack = [root.GetDown()]
+    while stack:
+        n = stack.pop()
+        while n is not None:
+            if isinstance(n, c4d.documents.LayerObject):
+                out.append(n)
+            down = n.GetDown()
+            if down is not None:
+                stack.append(down)
+            n = n.GetNext()
+    return out
+
+
+def _find_layer(doc, name: str):
+    """Find a LayerObject by name under ``doc``'s layer root. None if absent."""
+    for layer in _walk_layers(doc):
+        if layer.GetName() == name:
+            return layer
+    return None
+
+
+def _handle_is_plugin_options(h: Any) -> bool:
+    """True if this handle — or any handle in its ``owner`` chain — is a
+    plugin_options handle (a BaseList2D not owned by the document).
+
+    Callers use this to skip ``StartUndo``/``AddUndo`` on such targets:
+    recording undo for a node no document owns has been observed to
+    destabilise C4D 2026. Shared by ``set_params`` / ``remove_entity`` /
+    the user-data handlers so the guard can't drift between them.
+    """
+    if not isinstance(h, dict):
+        return False
+    if h.get("kind") == "plugin_options":
+        return True
+    return _handle_is_plugin_options(h.get("owner"))
+
+
 def _resolve_handle(h) -> Any:
     """Resolve a handle dict to a C4D entity. Returns None if not found.
 
@@ -450,6 +495,7 @@ def _resolve_handle(h) -> Any:
       {kind:"render_data", name}
       {kind:"take", name}
       {kind:"material", name}
+      {kind:"layer", name}
       {kind:"tag", object, type_id?, tag_name?}
       {kind:"video_post", render_data, type_id}
       {kind:"shader", owner:<handle>, index}
@@ -461,14 +507,23 @@ def _resolve_handle(h) -> Any:
     if not isinstance(h, dict):
         raise ValueError(f"handle must be a dict, got {type(h).__name__}")
     kind = h.get("kind")
+
+    def _req(key: str) -> Any:
+        v = h.get(key)
+        if v is None:
+            raise ValueError(f"{kind} handle requires {key!r}")
+        return v
+
     if kind == "object":
         return _resolve_object_handle(h)
     if kind == "render_data":
-        return _find_render_data(h["name"])
+        return _find_render_data(_req("name"))
     if kind == "take":
-        return _find_take(h["name"])
+        return _find_take(_req("name"))
     if kind == "material":
-        return _find_material(h["name"])
+        return _find_material(_req("name"))
+    if kind == "layer":
+        return _find_layer(documents.GetActiveDocument(), _req("name"))
     if kind == "tag":
         owner_name = h.get("object")
         owner_path = h.get("object_path")
@@ -482,12 +537,12 @@ def _resolve_handle(h) -> Any:
             return None
         return _find_tag(obj, type_id=h.get("type_id"), name=h.get("tag_name"))
     if kind == "video_post":
-        rd = _find_render_data(h["render_data"])
+        rd = _find_render_data(_req("render_data"))
         if rd is None:
             return None
-        return _find_videopost(rd, int(h["type_id"]))
+        return _find_videopost(rd, int(_req("type_id")))
     if kind == "shader":
-        owner = _resolve_handle(h["owner"])
+        owner = _resolve_handle(_req("owner"))
         if owner is None:
             return None
         # Prefer name when provided — survives shader-chain reordering, which

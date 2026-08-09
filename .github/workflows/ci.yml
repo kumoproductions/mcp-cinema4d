@@ -32,6 +32,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Typecheck tests
+        run: npm run typecheck:test
+
       - name: Lint (oxlint)
         run: npm run lint
 
@@ -46,6 +49,12 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Test (vitest)
+        # No Cinema 4D on CI runners, so the e2e suites skip themselves via
+        # probeBridge. This step still catches collection-time breakage — a bad
+        # import or top-level-await error in any test file fails the run.
+        run: npm test
 
       - name: Tool docs drift
         run: node scripts/generate-tools-doc.mjs --check

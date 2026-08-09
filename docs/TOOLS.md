@@ -4,7 +4,7 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 Every CRUD tool identifies entities by a typed `handle` object — see [Entity handles](../README.md#entity-handles).
 
-64 tools across 16 groups.
+68 tools across 16 groups.
 
 ## Basics
 
@@ -49,15 +49,19 @@ Typed create / read / update / delete across every C4D entity kind.
 
 Document state, frame range / fps / camera, RenderData + Take creation, scene merge.
 
-| Tool                 | Description                                                                                                                                                                                   |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `set_document`       | Update document-level settings: fps, frame range, current frame, active camera, active take.                                                                                                  |
-| `import_scene`       | Merge an external file (abc/fbx/obj/c4d/etc.) into the active document via MergeDocument.                                                                                                     |
-| `create_render_data` | Create (or update-if-exists) a RenderData with resolution / renderer / fps / frame range in one call.                                                                                         |
-| `create_take`        | Create or update a Take (AddTake + SetCamera + SetRenderData + SetChecked) in one call.                                                                                                       |
-| `take_override`      | Write per-Take parameter overrides onto a target node (object / tag / material / render_data / video_post / shader).                                                                          |
-| `sample_transform`   | Evaluate the scene at each requested frame and return the object's transform.                                                                                                                 |
-| `get_document_state` | One-shot reader for the active document's key fields: fps, min/max and loop frame range, current frame, document name/path, and canonical handles for the active camera / take / render data. |
+| Tool                 | Description                                                                                                                                                                                                                                                                   |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `set_document`       | Update document-level settings: fps, frame range, current frame, active camera, active take.                                                                                                                                                                                  |
+| `import_scene`       | Merge an external file (abc/fbx/obj/c4d/etc.) into the active document via MergeDocument.                                                                                                                                                                                     |
+| `create_render_data` | Create (or update-if-exists) a RenderData with resolution / renderer / fps / frame range in one call.                                                                                                                                                                         |
+| `create_take`        | Create or update a Take (AddTake + SetCamera + SetRenderData + SetChecked) in one call.                                                                                                                                                                                       |
+| `take_override`      | Write per-Take parameter overrides onto a target node (object / tag / material / render_data / video_post / shader).                                                                                                                                                          |
+| `create_marker`      | Create a named timeline marker at a frame (or time in seconds), with optional colour and length, in one call (c4d.documents.AddMarker).                                                                                                                                       |
+| `list_markers`       | Enumerate every timeline marker in the active document with its frame, time_seconds, name, colour and length_frames (c4d.documents.GetFirstMarker + GetNext).                                                                                                                 |
+| `set_marker`         | Rename, recolour, move, or resize an existing timeline marker.                                                                                                                                                                                                                |
+| `remove_marker`      | Delete one timeline marker, or all of them.                                                                                                                                                                                                                                   |
+| `sample_transform`   | Evaluate the scene at each requested frame and return the object's transform.                                                                                                                                                                                                 |
+| `get_document_state` | One-shot reader for the active document's key fields: fps, min/max and loop frame range, current frame, document name/path, canonical handles for the active camera / take / render data, and `marker_count` (how many timeline markers exist — list them with list_markers). |
 
 ## Selection
 

@@ -89,7 +89,12 @@ def handle_reset_scene(params: dict[str, Any]) -> dict[str, Any]:
         rd = doc.GetFirstRenderData()
         while rd is not None:
             nxt = rd.GetNext()
-            if rd is not active_rd and rd.GetName().startswith(prefix):
+            # `!=` (node compare), not `is not`: GetFirstRenderData()/GetNext()
+            # and GetActiveRenderData() each hand back a fresh Python wrapper
+            # for the same node, so `is not` was always true and the
+            # keep_active_rd guard never fired — dropping the active render
+            # data invalidates the document.
+            if (active_rd is None or rd != active_rd) and rd.GetName().startswith(prefix):
                 rd.Remove()
                 removed["render_data"] += 1
             rd = nxt
@@ -139,7 +144,10 @@ def handle_render(params: dict[str, Any]) -> dict[str, Any]:
     if doc is None:
         raise RuntimeError("no active document")
 
-    rd = doc.GetActiveRenderData().GetClone()
+    active_rd = doc.GetActiveRenderData()
+    if active_rd is None:
+        raise RuntimeError("no active render data")
+    rd = active_rd.GetClone()
     if rd is None:
         raise RuntimeError("failed to clone active render data")
 
