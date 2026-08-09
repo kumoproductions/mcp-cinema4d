@@ -1,16 +1,23 @@
 #!/usr/bin/env node
+import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { C4DClient } from "./c4d-client.js";
 import { TOOLS, type AnyTool } from "./tools/index.js";
 import { execPythonEnabled } from "./tools/exec-python.js";
 
+// Read the real package version at runtime so the server never self-reports a
+// stale literal. dist/index.js sits one level below package.json in both the
+// repo and the published tarball.
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json") as { version: string };
+
 // Prefer the unified C4D_MCP_* pair so one variable change reaches both sides.
 // Fall back to the legacy C4D_BRIDGE_* names for existing configs.
 const host = process.env.C4D_MCP_HOST ?? process.env.C4D_BRIDGE_HOST ?? "127.0.0.1";
 const port = Number(process.env.C4D_MCP_PORT ?? process.env.C4D_BRIDGE_PORT ?? 18710);
 const token = process.env.C4D_MCP_TOKEN?.trim() || undefined;
-if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+if (!Number.isInteger(port) || port <= 0 || port > 65535) {
   console.error(`[mcp-cinema4d] invalid port: ${port}`);
   process.exit(1);
 }
@@ -19,8 +26,26 @@ const client = new C4DClient({ host, port, token });
 
 const server = new McpServer({
   name: "mcp-cinema4d",
-  version: "0.1.0",
+  version,
 });
+
+// Derive MCP behaviour hints from the tool name so clients that gate on them
+// can tell readers from mutators without annotating all ~70 tools by hand.
+// `sample_transform` is deliberately NOT here: it drives the playhead
+// (SetTime + ExecutePasses) to evaluate each frame, and with
+// `restore_time:false` leaves it moved — not a read-only operation.
+const READ_ONLY_NAMES = new Set(["ping", "describe", "dump_shader"]);
+const DESTRUCTIVE_NAMES = new Set(["reset_scene", "close_document"]);
+
+function annotationsFor(name: string): { readOnlyHint?: boolean; destructiveHint?: boolean } {
+  if (name.startsWith("list_") || name.startsWith("get_") || READ_ONLY_NAMES.has(name)) {
+    return { readOnlyHint: true };
+  }
+  if (name.startsWith("remove_") || name.startsWith("delete_") || DESTRUCTIVE_NAMES.has(name)) {
+    return { destructiveHint: true };
+  }
+  return {};
+}
 
 function register(tool: AnyTool): void {
   server.registerTool(
@@ -29,6 +54,7 @@ function register(tool: AnyTool): void {
       title: tool.title,
       description: tool.description,
       inputSchema: tool.inputShape,
+      annotations: annotationsFor(tool.name),
     },
     async (args: unknown) => {
       try {

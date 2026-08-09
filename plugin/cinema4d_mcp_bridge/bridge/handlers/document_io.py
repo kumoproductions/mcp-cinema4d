@@ -59,9 +59,11 @@ def handle_save_document(params: dict[str, Any]) -> dict[str, Any]:
     if not ok:
         raise RuntimeError(f"SaveDocument failed for {path!r} (format={fmt_alias})")
 
-    if not save_copy:
-        # SaveDocument mutates the doc's internal path/name; reflect that back
-        # to the caller so subsequent saves hit the same file.
+    if not save_copy and fmt_alias.strip().lower() == "c4d":
+        # Only rewrite the document's identity for native .c4d saves. For an
+        # export (fbx/obj/abc/…) the live doc is still the .c4d scene, so
+        # repointing its path/name at the export would make the next Ctrl+S
+        # clobber that file with C4D-native content and orphan the original.
         doc.SetDocumentPath(os.path.dirname(path))
         doc.SetDocumentName(os.path.basename(path))
 
@@ -271,10 +273,14 @@ def handle_import_scene(params: dict[str, Any]) -> dict[str, Any]:
     if doc is None:
         raise RuntimeError("no active document")
 
-    before = set()
+    # Keep the pre-merge wrappers alive and compare with `==` (C4DAtom node
+    # identity). id() is unusable here: C4D hands out a fresh Python wrapper on
+    # every GetNext(), and the old wrappers would be GC'd and their addresses
+    # reused — so id()-based diffing silently misclassifies objects.
+    before: list[c4d.BaseObject] = []
     o = doc.GetFirstObject()
     while o is not None:
-        before.add(id(o))
+        before.append(o)
         o = o.GetNext()
 
     ok = documents.MergeDocument(doc, path, flags)
@@ -284,7 +290,7 @@ def handle_import_scene(params: dict[str, Any]) -> dict[str, Any]:
     new_objs: list[c4d.BaseObject] = []
     o = doc.GetFirstObject()
     while o is not None:
-        if id(o) not in before:
+        if o not in before:  # `in` uses __eq__ → underlying-node comparison
             new_objs.append(o)
         o = o.GetNext()
 
@@ -348,6 +354,8 @@ def handle_set_document(params: dict[str, Any]) -> dict[str, Any]:
             cam = _find_object(cam_name)
             if cam is None:
                 raise ValueError(f"camera not found: {cam_name}")
+            if not cam.IsInstanceOf(c4d.Ocamera):
+                raise ValueError(f"{cam_name!r} is not a camera object (type {cam.GetTypeName()})")
             bd = doc.GetRenderBaseDraw()
             if bd:
                 bd.SetSceneCamera(cam)

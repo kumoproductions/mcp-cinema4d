@@ -5,7 +5,7 @@ export const getDocumentStateTool = defineTool({
   group: "shot",
   title: "Get Document State",
   description:
-    "One-shot reader for the active document's key fields: fps, min/max and loop frame range, current frame, document name/path, and canonical handles for the active camera / take / render data. Pairs with `set_document` for the writer side.",
+    "One-shot reader for the active document's key fields: fps, min/max and loop frame range, current frame, document name/path, canonical handles for the active camera / take / render data, and `marker_count` (how many timeline markers exist — list them with list_markers). Pairs with `set_document` for the writer side.",
   inputShape: {},
   async handler(_args, client) {
     return textResult(await client.request("get_document_state", {}, 5_000));

@@ -49,10 +49,12 @@ _PRESET_VIEWS = ("current", "top", "bottom", "left", "right", "front", "back")
 # C4D coord system: +Y up, -Z is "front" of an object (camera default looks
 # toward +Z), so the conventional editor "Front" view places the camera at -Z.
 # For top/bottom the forward axis is parallel to world +Y, so we pick a
-# Z-axis world-up reference instead to avoid a degenerate cross product.
+# Z-axis world-up reference instead to avoid a degenerate cross product. The
+# up reference for top is world +Z (and -Z for bottom) so the rendered image
+# matches C4D's editor Top view: +X to the right, +Z pointing up.
 _PRESET_VIEW_BASIS: dict[str, tuple[c4d.Vector, c4d.Vector]] = {
-    "top": (c4d.Vector(0, 1, 0), c4d.Vector(0, 0, -1)),
-    "bottom": (c4d.Vector(0, -1, 0), c4d.Vector(0, 0, 1)),
+    "top": (c4d.Vector(0, 1, 0), c4d.Vector(0, 0, 1)),
+    "bottom": (c4d.Vector(0, -1, 0), c4d.Vector(0, 0, -1)),
     "right": (c4d.Vector(1, 0, 0), c4d.Vector(0, 1, 0)),
     "left": (c4d.Vector(-1, 0, 0), c4d.Vector(0, 1, 0)),
     "front": (c4d.Vector(0, 0, -1), c4d.Vector(0, 1, 0)),

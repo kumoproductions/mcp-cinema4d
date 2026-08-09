@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,8 +12,48 @@ const SERVER_ENTRY = path.join(REPO_ROOT, "dist", "index.js");
 
 export const TEST_PREFIX = "e2e_";
 
+function isEnoent(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException | null)?.code === "ENOENT";
+}
+
+/** Newest mtime (ms) of any file under `dir`, or 0 if the dir is missing. */
+function newestMtimeMs(dir: string): number {
+  let newest = 0;
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    if (!isEnoent(err)) throw err; // same rule as the stat below: an unreadable
+    return 0; // tree means the scan is incomplete, so don't call it "fresh"
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    let mtime: number;
+    try {
+      mtime = entry.isDirectory() ? newestMtimeMs(full) : statSync(full).mtimeMs;
+    } catch (err) {
+      if (isEnoent(err)) continue; // file vanished between readdir and stat — skip it
+      throw err; // EACCES and friends mean the scan is incomplete — don't rebuild blind
+    }
+    if (mtime > newest) newest = mtime;
+  }
+  return newest;
+}
+
 function ensureBuilt(): void {
-  if (existsSync(SERVER_ENTRY)) return;
+  // Rebuild when dist is missing OR stale — otherwise a run right after editing
+  // a tool (e.g. adding one) would spawn the old build and fail confusingly
+  // ("unknown tool …") instead of testing the current source.
+  // Stat once: a separate existsSync would let the file vanish in between and
+  // turn a missing artifact into a thrown ENOENT instead of a rebuild.
+  let builtMtimeMs: number | null = null;
+  try {
+    builtMtimeMs = statSync(SERVER_ENTRY).mtimeMs;
+  } catch (err) {
+    if (!isEnoent(err)) throw err; // only "not built yet" is expected here
+  }
+  const stale = builtMtimeMs === null || newestMtimeMs(path.join(REPO_ROOT, "src")) > builtMtimeMs;
+  if (!stale) return;
   const r = spawnSync("npm", ["run", "build"], { cwd: REPO_ROOT, stdio: "inherit", shell: true });
   if (r.status !== 0) {
     throw new Error("failed to build MCP server before tests");
@@ -201,7 +241,11 @@ if doc is not None:
     rd = doc.GetFirstRenderData()
     while rd is not None:
         nxt = rd.GetNext()
-        if rd is not active_rd:
+        # Node compare, not identity: GetFirstRenderData()/GetNext() and
+        # GetActiveRenderData() hand back fresh wrappers for the same node,
+        # so "is not" was always true and this dropped the active render
+        # data — which invalidates the document.
+        if active_rd is None or rd != active_rd:
             rd.Remove()
         rd = nxt
     td = doc.GetTakeData()

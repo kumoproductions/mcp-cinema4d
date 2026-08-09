@@ -142,7 +142,7 @@ describe.skipIf(!ready)("mesh (get/set)", () => {
       include: ["selections"],
     });
     expect(r.poly_selection).toEqual([1]);
-    expect((r.point_selection ?? []).toSorted((a, b) => a - b)).toEqual([0, 2, 4]);
+    expect((r.point_selection ?? []).toSorted((a: number, b: number) => a - b)).toEqual([0, 2, 4]);
   });
 
   test("set_mesh accepts triangles (same a-b-c with d repeated as c)", async () => {

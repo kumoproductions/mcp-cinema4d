@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    // Tests run on Node 24, which has Array#toSorted etc. (ES2023). src stays on
+    // the ES2022 lib since the shipped server targets that.
+    "lib": ["ES2023"]
+  },
+  // Tests only — `npm run typecheck` already covers src under the stricter
+  // ES2022 lib, and listing it here would just re-check it under ES2023.
+  // Anything a test imports is pulled in by module resolution anyway.
+  "include": ["tests/**/*"]
+}

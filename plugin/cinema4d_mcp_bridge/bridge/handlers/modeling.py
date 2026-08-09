@@ -96,6 +96,8 @@ def _is_producing_command(cmd: int) -> bool:
     leaves them dangling outside the document. Per the 2026 SDK,
     MAKEEDITABLE is in this category too — the original primitive is
     removed and a new polygon object is returned for the caller to insert.
+    CONNECTDELETE likewise returns a new joined object; it additionally
+    deletes its sources, which the undo bookkeeping below accounts for.
     """
     producing = {
         getattr(c4d, "MCOMMAND_CURRENTSTATETOOBJECT", -1),
@@ -103,6 +105,7 @@ def _is_producing_command(cmd: int) -> bool:
         getattr(c4d, "MCOMMAND_SPLIT", -3),
         getattr(c4d, "MCOMMAND_EXPLODESEGMENTS", -4),
         getattr(c4d, "MCOMMAND_MAKEEDITABLE", -5),
+        getattr(c4d, "MCOMMAND_CONNECTDELETE", -6),
     }
     return cmd in producing
 
@@ -155,6 +158,22 @@ def handle_modeling_command(params: dict[str, Any]) -> dict[str, Any]:
 
     doc.StartUndo()
     try:
+        # In-place commands (subdivide, triangulate, optimize, reverse_normals,
+        # …) mutate the source topology directly, so AddUndo(CHANGE) must be
+        # recorded before the command runs — otherwise Ctrl+Z can't revert it.
+        # Producing commands record NEW/DELETE undos for what they create or
+        # replace below instead.
+        connect_delete_id = getattr(c4d, "MCOMMAND_CONNECTDELETE", -6)
+        if not _is_producing_command(cmd):
+            for obj in resolved:
+                doc.AddUndo(c4d.UNDOTYPE_CHANGE, obj)
+        elif cmd == connect_delete_id:
+            # CONNECTDELETE drops its sources inside SendModelingCommand, and
+            # AddUndo(UNDOTYPE_DELETE) is only valid while the node is still
+            # attached — so it has to be recorded before the call, not after.
+            for obj in resolved:
+                doc.AddUndo(c4d.UNDOTYPE_DELETE, obj)
+
         result = c4d_utils.SendModelingCommand(
             command=cmd,
             list=resolved,

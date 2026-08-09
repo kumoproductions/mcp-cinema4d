@@ -1,11 +1,13 @@
 import net from "node:net";
 import { randomUUID } from "node:crypto";
+import { StringDecoder } from "node:string_decoder";
 
 export interface C4DRequest {
   id: string;
   command: string;
   params: Record<string, unknown>;
   token?: string;
+  timeout_ms?: number;
 }
 
 export interface C4DResponse {
@@ -36,6 +38,9 @@ export class C4DClient {
   private socket: net.Socket | null = null;
   private connecting: Promise<net.Socket> | null = null;
   private buffer = "";
+  // Decode incrementally so a multi-byte UTF-8 char (e.g. a Japanese object
+  // name) split across two TCP chunks isn't corrupted into U+FFFD.
+  private decoder = new StringDecoder("utf8");
   private pending = new Map<string, PendingRequest>();
 
   constructor(options: C4DClientOptions = {}) {
@@ -71,8 +76,8 @@ export class C4DClient {
       socket.connect(this.port, this.host, () => {
         socket.setTimeout(0);
         socket.off("error", onError);
-        socket.on("error", (err) => this.onSocketError(err));
-        socket.on("close", () => this.onSocketClose());
+        socket.on("error", (err) => this.onSocketError(socket, err));
+        socket.on("close", () => this.onSocketClose(socket));
         socket.on("data", (chunk) => this.onData(chunk));
         this.socket = socket;
         this.connecting = null;
@@ -84,7 +89,7 @@ export class C4DClient {
   }
 
   private onData(chunk: Buffer): void {
-    this.buffer += chunk.toString("utf8");
+    this.buffer += this.decoder.write(chunk);
     let newlineIndex: number;
     while ((newlineIndex = this.buffer.indexOf("\n")) >= 0) {
       const line = this.buffer.slice(0, newlineIndex).trim();
@@ -98,7 +103,14 @@ export class C4DClient {
     let msg: C4DResponse;
     try {
       msg = JSON.parse(line) as C4DResponse;
-    } catch {
+    } catch (err) {
+      // A non-JSON line means the framing is out of sync — surface it rather
+      // than swallowing it, which otherwise shows up only as opaque per-request
+      // timeouts that point at C4D instead of the protocol.
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[mcp-cinema4d] dropped malformed response line (${detail}): ${line.slice(0, 200)}`,
+      );
       return;
     }
     const pending = this.pending.get(msg.id);
@@ -112,14 +124,34 @@ export class C4DClient {
     }
   }
 
-  private onSocketError(err: Error): void {
+  private onSocketError(source: net.Socket, err: Error): void {
+    // Destroy + drop the socket so the next request reconnects instead of
+    // reusing a half-dead one, rather than relying on a 'close' always
+    // following 'error'.
+    source.destroy();
+    // `destroy()` emits 'close' asynchronously, so a dead socket can still
+    // raise events after we reconnected. Ignore anything that isn't the live
+    // connection — otherwise a stale event would drop the new socket and
+    // reject the requests in flight on it.
+    if (this.socket !== source) return;
+    this.socket = null;
+    this.resetReceiveState();
     this.failAllPending(new Error(`C4D bridge socket error: ${err.message}`));
   }
 
-  private onSocketClose(): void {
+  private onSocketClose(source: net.Socket): void {
+    if (this.socket !== source) return;
     this.socket = null;
-    this.buffer = "";
+    this.resetReceiveState();
     this.failAllPending(new Error("C4D bridge socket closed"));
+  }
+
+  private resetReceiveState(): void {
+    // A dead connection may leave a partial line in the buffer and partial
+    // multi-byte state in the decoder; either would corrupt the first frames
+    // of the next connection.
+    this.buffer = "";
+    this.decoder = new StringDecoder("utf8");
   }
 
   private failAllPending(err: Error): void {
@@ -139,6 +171,10 @@ export class C4DClient {
     const id = randomUUID();
     const payload: C4DRequest = { id, command, params };
     if (this.token) payload.token = this.token;
+    // Tell the bridge how long the client is willing to wait so its main-thread
+    // wait matches; otherwise a long op (heavy render) would hit the bridge's
+    // fixed 60 s cap and error while the op keeps running.
+    payload.timeout_ms = timeoutMs;
 
     return await new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {

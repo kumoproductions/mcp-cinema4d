@@ -1,21 +1,6 @@
 import { z } from "zod";
 import { defineTool, textResult } from "./define-tool.js";
-import { handleDescription, handleSchema } from "./handle.js";
-
-// Each path segment is one of:
-//   - an int id (common case)
-//   - "x" | "y" | "z" (vector sub-component)
-//   - [id, "real"|"long"|"bool"|"vector"] (explicit dtype alias)
-//   - [id, dtype_int, creator_int] (bridge-internal DescLevel echo, emitted
-//     by list_user_data so callers can pipe that shape straight back)
-const pathSegment = z.union([
-  z.number().int(),
-  z.enum(["x", "y", "z"]),
-  z.tuple([z.union([z.number().int(), z.enum(["x", "y", "z"])]), z.string()]),
-  z.array(z.number().int()).min(2).max(3),
-]);
-
-const pathSchema = z.union([z.number().int(), z.array(pathSegment).min(1)]);
+import { handleDescription, handleSchema, pathSchema } from "./handle.js";
 
 export const getParamsTool = defineTool({
   name: "get_params",

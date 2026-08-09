@@ -14,7 +14,7 @@ from typing import Any
 import c4d
 from c4d import documents
 
-from ._helpers import _resolve_handle
+from ._helpers import _find_layer, _resolve_handle, _walk_layers
 
 # Names map directly to LayerData dict keys so callers don't juggle
 # LAYERFLAGS_* constants. Every flag defaults to whatever the layer currently
@@ -31,33 +31,6 @@ _FLAG_KEYS = (
     "animation",
     "xref",
 )
-
-
-def _walk_layers(doc: c4d.documents.BaseDocument) -> list[c4d.documents.LayerObject]:
-    """Collect every LayerObject in document order."""
-    out: list[c4d.documents.LayerObject] = []
-    root = doc.GetLayerObjectRoot()
-    if root is None:
-        return out
-
-    def walk(n):
-        while n is not None:
-            if isinstance(n, c4d.documents.LayerObject):
-                out.append(n)
-            d = n.GetDown()
-            if d is not None:
-                walk(d)
-            n = n.GetNext()
-
-    walk(root.GetDown())
-    return out
-
-
-def _find_layer(doc: c4d.documents.BaseDocument, name: str) -> c4d.documents.LayerObject | None:
-    for layer in _walk_layers(doc):
-        if layer.GetName() == name:
-            return layer
-    return None
 
 
 def _layer_summary(layer: c4d.documents.LayerObject, doc) -> dict[str, Any]:

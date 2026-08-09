@@ -1,15 +1,6 @@
 import { z } from "zod";
 import { defineTool, textResult } from "./define-tool.js";
-import { handleSchema } from "./handle.js";
-
-const pathSegment = z.union([
-  z.number().int(),
-  z.enum(["x", "y", "z"]),
-  z.tuple([z.union([z.number().int(), z.enum(["x", "y", "z"])]), z.string()]),
-  z.array(z.number().int()).min(2).max(3),
-]);
-
-const pathSchema = z.union([z.number().int(), z.array(pathSegment).min(1)]);
+import { handleSchema, pathSchema } from "./handle.js";
 
 export const takeOverrideTool = defineTool({
   name: "take_override",
