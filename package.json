@@ -58,12 +58,14 @@
     "lint:py:fix": "uvx ruff@0.15.11 check --fix",
     "format:py": "uvx ruff@0.15.11 format",
     "format:py:check": "uvx ruff@0.15.11 format --check",
+    "check:server-json": "node scripts/check-server-json.mjs",
     "docs:tools": "npm run build && node scripts/generate-tools-doc.mjs",
     "docs:tools:check": "npm run build && node scripts/generate-tools-doc.mjs --check",
-    "check": "npm run typecheck && npm run typecheck:test && npm run lint && npm run format:check && npm run lint:py && npm run format:py:check && npm run docs:tools:check",
+    "check": "npm run typecheck && npm run typecheck:test && npm run lint && npm run format:check && npm run lint:py && npm run format:py:check && npm run check:server-json && npm run docs:tools:check",
     "prepare": "lefthook install",
     "prepublishOnly": "npm run build",
-    "version": "node scripts/sync-server-version.mjs && git add server.json"
+    "preversion": "node scripts/release-changelog.mjs --check",
+    "version": "node scripts/release-changelog.mjs && node scripts/sync-server-version.mjs && git add CHANGELOG.md server.json"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

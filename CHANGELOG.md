@@ -374,3 +374,5 @@ candidate paths suggested; `create_entity` returns handles with both
 - GitHub Actions CI: typecheck / lint / format / build / CRLF guard.
 - Toolchain: oxlint, oxfmt, ruff (via `uvx`), lefthook pre-commit hooks,
   LF enforcement.
+
+[0.4.2]: https://github.com/kumoproductions/mcp-cinema4d/releases/tag/v0.4.2

@@ -197,6 +197,17 @@ Use the shared `_apply_params(obj, values)` helper — it already handles `list[
 - Keep the PR description tight: what changed, why, how it was tested.
 - CI must be green before review. If you can't run E2E locally (no C4D), say so in the PR — reviewers will help verify on a real instance.
 
+## Release flow (maintainers)
+
+1. Land the release notes under a `## [Unreleased]` heading in `CHANGELOG.md` (Keep a Changelog subsections: Added / Changed / Fixed / Security).
+2. `npm version <patch|minor|major>` — two scripts run around the bump and stage their output into the version commit:
+   - `scripts/release-changelog.mjs` rewrites `## [Unreleased]` to `## [<version>] - <today>` and adds the `[<version>]: …/releases/tag/v<version>` link. It runs first as `preversion --check`, so a missing or empty `[Unreleased]` section aborts the release before anything is bumped.
+   - `scripts/sync-server-version.mjs` syncs `server.json` to the new version.
+3. Push the commit and the `v*` tag.
+4. The `release.yml` workflow re-runs the full check + test gate, then publishes to npm (Trusted Publishing via OIDC), the MCP Registry (`mcp-publisher`), and mirrors to GitHub Packages, plus creates the GitHub Release with the bridge-plugin zip attached. Every publish step is idempotent — re-running a partially failed release is safe.
+
+The workflow refuses to publish if the tag, `package.json`, and `server.json` versions disagree, so never edit versions by hand. `npm run check` also validates `server.json` against the MCP Registry's own constraints (`scripts/check-server-json.mjs`), so a rejection surfaces at the commit that caused it rather than halfway through a release.
+
 ## Plugin ID
 
 `PLUGIN_ID = 1068169` in `cinema4d_mcp_bridge.pyp` is the Maxon-registered id for this project (issued via [plugincafe.maxon.net](https://plugincafe.maxon.net/)). If you fork this repo and plan to redistribute builds under your own name, request your own id rather than reusing this one.
