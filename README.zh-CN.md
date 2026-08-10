@@ -71,10 +71,10 @@ openssl rand -hex 16
 }
 ```
 
-| 客户端 | 配置文件 |
-| --- | --- |
+| 客户端                       | 配置文件                                                                                                                         |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | Claude Desktop / Claude Code | Windows：`%APPDATA%\Claude\claude_desktop_config.json`；macOS：`~/Library/Application Support/Claude/claude_desktop_config.json` |
-| 其他 MCP 客户端 | 请查看该客户端如何注册 stdio server 的文档 |
+| 其他 MCP 客户端              | 请查看该客户端如何注册 stdio server 的文档                                                                                       |
 
 相同的 `C4D_MCP_*` 变量也必须在 Cinema 4D 启动环境中设置，因为 bridge 在 C4D 启动时读取它们。Windows 可将其设为用户环境变量后重启 C4D；macOS 可在启动前导出变量。需要更换 socket 时，同时设置 `C4D_MCP_PORT`，也可设置 `C4D_MCP_HOST`。
 
@@ -82,33 +82,33 @@ openssl rand -hex 16
 
 共有 64 个工具，分为 16 组。LLM 会按提示自行选择，通常无需手动调用。完整逐项说明见 [docs/TOOLS.md](./docs/TOOLS.md)。
 
-| 分组 | 数量 | 内容 |
-| --- | :---: | --- |
-| Basics | 4 | `ping`、`render`、`preview_render`、`reset_scene` |
-| Script-style | 5 | `exec_python`（需开启）、`call_command`、`list_plugins`、`undo`、`batch` |
-| Generic CRUD | 9 | `list_entities`、`describe`、参数与容器读取/设置、创建/移除实体、关键帧 |
-| Shot setup | 7 | 文档状态、fps、帧范围、相机、导入、RenderData、Take |
-| Selection / Hierarchy | 4 | 选择、重新设父级、排序、克隆 |
-| Modeling / Mesh | 4 | 建模命令、网格读写、网格选择 |
-| Document I/O | 6 | 保存、打开、新建、列出、切换与关闭文档 |
-| Node graphs | 10 | 节点材质与 Xpresso 图 |
-| Tags / Animation | 5 | 材质指定、轨道与关键帧 |
-| Transforms / User data / MoGraph | 5 | 变换、用户数据、MoGraph clones |
-| Layers | 5 | 图层枚举、创建、指定、查询与开关 |
+| 分组                             | 数量 | 内容                                                                     |
+| -------------------------------- | :--: | ------------------------------------------------------------------------ |
+| Basics                           |  4   | `ping`、`render`、`preview_render`、`reset_scene`                        |
+| Script-style                     |  5   | `exec_python`（需开启）、`call_command`、`list_plugins`、`undo`、`batch` |
+| Generic CRUD                     |  9   | `list_entities`、`describe`、参数与容器读取/设置、创建/移除实体、关键帧  |
+| Shot setup                       |  7   | 文档状态、fps、帧范围、相机、导入、RenderData、Take                      |
+| Selection / Hierarchy            |  4   | 选择、重新设父级、排序、克隆                                             |
+| Modeling / Mesh                  |  4   | 建模命令、网格读写、网格选择                                             |
+| Document I/O                     |  6   | 保存、打开、新建、列出、切换与关闭文档                                   |
+| Node graphs                      |  10  | 节点材质与 Xpresso 图                                                    |
+| Tags / Animation                 |  5   | 材质指定、轨道与关键帧                                                   |
+| Transforms / User data / MoGraph |  5   | 变换、用户数据、MoGraph clones                                           |
+| Layers                           |  5   | 图层枚举、创建、指定、查询与开关                                         |
 
 ## Entity handles
 
 CRUD 工具使用有类型的 `handle` 对象识别实体。场景中若有同名对象，建议优先使用 `path`；解析器会对歧义名称报错。
 
-| 类型 | 示例 |
-| --- | --- |
-| `object` | `{kind:"object", name:"Cube"}` 或 `{kind:"object", path:"/Root/Character/Hip"}` |
-| `render_data` | `{kind:"render_data", name:"VFX_Shot002"}` |
-| `take` | `{kind:"take", name:"VFX_Shot002"}` |
-| `material` | `{kind:"material", name:"Concrete"}` |
-| `tag` | `{kind:"tag", object:"Cube", type_id:1029524, tag_name?:"..."}` |
-| `video_post` | `{kind:"video_post", render_data:"VFX_Shot002", type_id:1029525}` |
-| `shader` | `{kind:"shader", owner:<handle>, name?:"Layer 0"}` 或 `{..., index:0}` |
+| 类型          | 示例                                                                            |
+| ------------- | ------------------------------------------------------------------------------- |
+| `object`      | `{kind:"object", name:"Cube"}` 或 `{kind:"object", path:"/Root/Character/Hip"}` |
+| `render_data` | `{kind:"render_data", name:"VFX_Shot002"}`                                      |
+| `take`        | `{kind:"take", name:"VFX_Shot002"}`                                             |
+| `material`    | `{kind:"material", name:"Concrete"}`                                            |
+| `tag`         | `{kind:"tag", object:"Cube", type_id:1029524, tag_name?:"..."}`                 |
+| `video_post`  | `{kind:"video_post", render_data:"VFX_Shot002", type_id:1029525}`               |
+| `shader`      | `{kind:"shader", owner:<handle>, name?:"Layer 0"}` 或 `{..., index:0}`          |
 
 `name` 查找很严格：若多个实体同名，bridge 会返回最多五个候选路径；此时请改用路径 handle。`create_entity` 会返回刚解析出的 handle，让连续编辑更稳定。
 
@@ -116,10 +116,10 @@ CRUD 工具使用有类型的 `handle` 对象识别实体。场景中若有同�
 
 从 [Releases](https://github.com/kumoproductions/mcp-cinema4d/releases/latest) 获取最新 `cinema4d_mcp_bridge-<version>.zip`，把内部 `cinema4d_mcp_bridge/` 解压到 plugins 目录：
 
-| 系统 | 常见 plugins 目录 |
-| --- | --- |
-| Windows | `%APPDATA%\Maxon\Maxon Cinema 4D <VERSION>\plugins\` |
-| macOS | `~/Library/Preferences/Maxon/Maxon Cinema 4D <VERSION>/plugins/` |
+| 系统    | 常见 plugins 目录                                                |
+| ------- | ---------------------------------------------------------------- |
+| Windows | `%APPDATA%\Maxon\Maxon Cinema 4D <VERSION>\plugins\`             |
+| macOS   | `~/Library/Preferences/Maxon/Maxon Cinema 4D <VERSION>/plugins/` |
 
 也可通过 `Preferences > Plugins > Add` 注册自定义搜索路径。解压后必须重启 C4D，插件只会在重启时重新加载。插件版本应与 npm 包版本保持一致；版本不一致会在 bridge 日志中出现 `unknown command: <tool>`。
 
@@ -128,14 +128,14 @@ CRUD 工具使用有类型的 `handle` 对象识别实体。场景中若有同�
 
 ## 配置
 
-| 变量 | 位置 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `C4D_MCP_HOST` | 两端 | `127.0.0.1` | TCP bridge 的主机。 |
-| `C4D_MCP_PORT` | 两端 | `18710` | TCP bridge 端口。 |
-| `C4D_MCP_ENABLE_EXEC_PYTHON` | 两端 | 未设置 | 选择启用；两端均设为 `1` 才暴露 `exec_python`。 |
-| `C4D_MCP_ENABLE_PYTHON_OPS` | C4D plugin | 未设置 | 选择启用；允许创建或编辑含 Python 源码的插件类型。 |
-| `C4D_MCP_TOKEN` | 两端 | 未设置 | 共享密钥，强烈建议设置。 |
-| `C4D_MCP_ALLOW_REMOTE` | C4D plugin | 未设置 | 非 loopback 地址绑定必须设为 `1`。 |
+| 变量                         | 位置       | 默认值      | 说明                                               |
+| ---------------------------- | ---------- | ----------- | -------------------------------------------------- |
+| `C4D_MCP_HOST`               | 两端       | `127.0.0.1` | TCP bridge 的主机。                                |
+| `C4D_MCP_PORT`               | 两端       | `18710`     | TCP bridge 端口。                                  |
+| `C4D_MCP_ENABLE_EXEC_PYTHON` | 两端       | 未设置      | 选择启用；两端均设为 `1` 才暴露 `exec_python`。    |
+| `C4D_MCP_ENABLE_PYTHON_OPS`  | C4D plugin | 未设置      | 选择启用；允许创建或编辑含 Python 源码的插件类型。 |
+| `C4D_MCP_TOKEN`              | 两端       | 未设置      | 共享密钥，强烈建议设置。                           |
+| `C4D_MCP_ALLOW_REMOTE`       | C4D plugin | 未设置      | 非 loopback 地址绑定必须设为 `1`。                 |
 
 ## 安全
 
@@ -151,14 +151,14 @@ CRUD 工具使用有类型的 `handle` 对象识别实体。场景中若有同�
 
 ## 排错
 
-| 现象 | 可能原因与处理 |
-| --- | --- |
-| 无法连接 `127.0.0.1:18710` | C4D 未运行、插件未加载或防火墙阻断 localhost。查看 C4D 控制台与 bridge log。 |
+| 现象                       | 可能原因与处理                                                                      |
+| -------------------------- | ----------------------------------------------------------------------------------- |
+| 无法连接 `127.0.0.1:18710` | C4D 未运行、插件未加载或防火墙阻断 localhost。查看 C4D 控制台与 bridge log。        |
 | 插件加载但没有 `listening` | 通常是 `cinema4d_mcp_bridge.pyp` 导入错误。删除旧安装文件夹，重新解压最新版并重启。 |
-| `address already in use` | 端口被占用。关闭占用程序，或在 C4D 与 MCP server 两端使用相同的 `C4D_MCP_PORT`。 |
-| `unknown command: <tool>` | bridge plugin 比 npm 包旧。下载匹配版本，重新解压并重启 C4D。 |
-| 对象名称歧义 | 使用路径 handle，例如 `{kind:"object", path:"/A/B/C"}`。 |
-| `exec_python is disabled` | 两端均设置 `C4D_MCP_ENABLE_EXEC_PYTHON=1`，然后重启 C4D。 |
+| `address already in use`   | 端口被占用。关闭占用程序，或在 C4D 与 MCP server 两端使用相同的 `C4D_MCP_PORT`。    |
+| `unknown command: <tool>`  | bridge plugin 比 npm 包旧。下载匹配版本，重新解压并重启 C4D。                       |
+| 对象名称歧义               | 使用路径 handle，例如 `{kind:"object", path:"/A/B/C"}`。                            |
+| `exec_python is disabled`  | 两端均设置 `C4D_MCP_ENABLE_EXEC_PYTHON=1`，然后重启 C4D。                           |
 
 ## 已知限制
 
