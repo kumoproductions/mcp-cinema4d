@@ -3,7 +3,10 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.1]
+## [0.4.2] - 2026-08-10
+
+0.4.1 was tagged but never published — its release run failed on a formatting
+check before anything shipped — so its notes are folded in here.
 
 ### Added
 
@@ -11,6 +14,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   shipped in the npm tarball.
 - Simplified Chinese README (`README.zh-CN.md`), cross-linked from the English README and
   shipped in the npm tarball, thanks to @truman-t3.
+
+### Fixed
+
+- **The GitHub Packages mirror never published anything.** Its "already
+  published?" guard queried npmjs instead of GitHub Packages, so every release
+  decided the version was already mirrored and skipped it. Installing from
+  npmjs — the supported route — was never affected.
 
 ## [0.4.0] - 2026-07-11
 
