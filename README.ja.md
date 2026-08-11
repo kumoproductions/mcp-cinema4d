@@ -1,3 +1,5 @@
+![MCP for Cinema 4D](https://raw.githubusercontent.com/kumoproductions/mcp-cinema4d/main/assets/ogp.png)
+
 # mcp-cinema4d
 
 [![CI](https://github.com/kumoproductions/mcp-cinema4d/actions/workflows/ci.yml/badge.svg)](https://github.com/kumoproductions/mcp-cinema4d/actions/workflows/ci.yml)

@@ -1,3 +1,5 @@
+![MCP for Cinema 4D](https://raw.githubusercontent.com/kumoproductions/mcp-cinema4d/main/assets/ogp.png)
+
 # mcp-cinema4d
 
 [English](README.md)
