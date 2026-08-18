@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.3] - 2026-08-18
 
 ### Fixed
 
@@ -391,4 +391,5 @@ candidate paths suggested; `create_entity` returns handles with both
 - Toolchain: oxlint, oxfmt, ruff (via `uvx`), lefthook pre-commit hooks,
   LF enforcement.
 
+[0.4.3]: https://github.com/kumoproductions/mcp-cinema4d/releases/tag/v0.4.3
 [0.4.2]: https://github.com/kumoproductions/mcp-cinema4d/releases/tag/v0.4.2
