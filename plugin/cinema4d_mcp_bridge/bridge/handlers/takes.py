@@ -23,6 +23,35 @@ from ._helpers import (
     _resolve_handle,
 )
 
+# Take Manager's "Lock Overrides" toggle. Override creation
+# (``BaseTake.OverrideNode`` / ``FindOrAddOverrideParam``) is gated by
+# ``OVERRIDEENABLING_GLOBAL`` — the very state this toggle controls — and the
+# APIs return ``None`` instead of raising when it is off. Fresh documents
+# start with the toggle on, so tests never see the failure; production scenes
+# where an artist switched it off make every override write fail. There is no
+# Python setter (``TakeData.SetOverrideEnabling`` does not exist), but the
+# toggle is a registered command we can flip via ``CallCommand``.
+_LOCK_OVERRIDES_COMMAND = 431000108
+
+
+def _lock_overrides_on(td: Any) -> bool:
+    """Flip "Lock Overrides" ON if it is off. Returns True when flipped.
+
+    Reads the flag back after ``CallCommand`` so an SDK where the command id
+    no longer exists reports False and the caller falls through to the
+    regular error path instead of silently believing the unlock worked.
+    """
+    if td.GetOverrideEnabling() & c4d.OVERRIDEENABLING_GLOBAL:
+        return False
+    c4d.CallCommand(_LOCK_OVERRIDES_COMMAND)
+    return bool(td.GetOverrideEnabling() & c4d.OVERRIDEENABLING_GLOBAL)
+
+
+def _lock_overrides_restore(td: Any, toggled: bool) -> None:
+    """Undo ``_lock_overrides_on`` — restore the artist's toggle state."""
+    if toggled and td.GetOverrideEnabling() & c4d.OVERRIDEENABLING_GLOBAL:
+        c4d.CallCommand(_LOCK_OVERRIDES_COMMAND)
+
 
 def handle_create_take(params: dict[str, Any]) -> dict[str, Any]:
     """Create or update a Take, optionally linking camera and render data.
@@ -136,9 +165,15 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
       remove_all: bool — drop the entire override for this node
       params:  shorthand {pid: value} for flat writes (applied after `values`)
 
+    If the Take Manager's "Lock Overrides" toggle is off (which makes every
+    override-creation API return ``None``), the bridge flips it on for the
+    duration of the write and restores the artist's state afterward. The
+    response reports this via ``lock_overrides_toggled``.
+
     Returns:
       {applied:[{path,value}], errors:[{path,error}],
-       cleared:[path,...], removed_all:bool, take, target}
+       cleared:[path,...], removed_all:bool, take, target,
+       lock_overrides_toggled:bool}
     """
     take_name = params.get("take")
     if not take_name or not isinstance(take_name, str):
@@ -182,6 +217,7 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
     cleared: list[Any] = []
     removed_all = False
 
+    lock_toggled = _lock_overrides_on(td)
     doc.StartUndo()
     try:
         doc.AddUndo(c4d.UNDOTYPE_CHANGE, take)
@@ -219,7 +255,12 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
                 # intact (we're only adding an override on top).
                 override = take.OverrideNode(td, target, False)
             if override is None:
-                raise RuntimeError("OverrideNode returned None")
+                raise RuntimeError(
+                    "OverrideNode returned None — C4D refused to create the "
+                    "override even after enabling the Take Manager's 'Lock "
+                    "Overrides' toggle (OVERRIDEENABLING_GLOBAL). Check that "
+                    "the target's parameters are overridable on this build."
+                )
 
             # Apply value overrides.
             all_values = list(values)
@@ -310,6 +351,7 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
                         c4d.EventAdd()
     finally:
         doc.EndUndo()
+        _lock_overrides_restore(td, lock_toggled)
     c4d.EventAdd()
 
     return {
@@ -319,4 +361,5 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
         "errors": errors,
         "cleared": cleared,
         "removed_all": removed_all,
+        "lock_overrides_toggled": lock_toggled,
     }

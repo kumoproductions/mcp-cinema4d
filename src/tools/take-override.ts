@@ -7,7 +7,7 @@ export const takeOverrideTool = defineTool({
   group: "shot",
   title: "Write Take Parameter Overrides",
   description:
-    "Write per-Take parameter overrides onto a target node (object / tag / material / render_data / video_post / shader). Wraps `take.OverrideNode + UpdateSceneNode + override[descid] = value`. Use this for shot-by-shot variations that share a single scene (e.g. override Focal Length per Take while one Camera is reused). Paths use the same syntax as `set_params`.",
+    "Write per-Take parameter overrides onto a target node (object / tag / material / render_data / video_post / shader). Wraps `take.OverrideNode + UpdateSceneNode + override[descid] = value`. Use this for shot-by-shot variations that share a single scene (e.g. override Focal Length per Take while one Camera is reused). Paths use the same syntax as `set_params`. If the scene's Take Manager has its \"Lock Overrides\" toggle off (which makes C4D refuse all override creation), the bridge enables it for the write and restores the artist's state afterward — reported as `lock_overrides_toggled` in the result.",
   inputShape: {
     take: z.string().describe("Take name (must not be Main)."),
     target: handleSchema.describe("Handle of the node to override."),
