@@ -63,6 +63,12 @@ class Dispatcher:
             log(f"TIMEOUT waiting for main thread to process {command}")
         return pending
 
+    def execute(self, command: str, params: dict[str, Any]) -> PendingCommand:
+        """Run a command immediately when the caller is already on C4D's main thread."""
+        pending = PendingCommand(command=command, params=params)
+        self._run_one(pending)
+        return pending
+
     def drain(self) -> None:
         """Called from CoreMessage on the main thread. Runs queued handlers."""
         count = 0

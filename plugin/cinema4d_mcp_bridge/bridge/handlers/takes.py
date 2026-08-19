@@ -8,6 +8,7 @@ records per-Take parameter overrides on a target node — the Take system's
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import c4d
@@ -32,6 +33,10 @@ from ._helpers import (
 # Python setter (``TakeData.SetOverrideEnabling`` does not exist), but the
 # toggle is a registered command we can flip via ``CallCommand``.
 _LOCK_OVERRIDES_COMMAND = 431000108
+
+# R26 needs FindOrAddOverrideParam for sub-descriptions such as Vector.Y;
+# C4D 2026 keeps the existing OverrideNode path.
+_USE_LEGACY_TAKE_PARAM_API = sys.version_info < (3, 11)
 
 
 def _lock_overrides_on(td: Any) -> bool:
@@ -249,19 +254,11 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
                 )
         else:
             override = take.FindOverride(td, target)
-            if override is None:
+            if override is None and not _USE_LEGACY_TAKE_PARAM_API:
                 # OverrideNode(takeData, node, deleteAnim) — the third arg is
                 # required on C4D 2026+. False keeps the scene-side animation
                 # intact (we're only adding an override on top).
                 override = take.OverrideNode(td, target, False)
-            if override is None:
-                raise RuntimeError(
-                    "OverrideNode returned None — C4D refused to create the "
-                    "override even after enabling the Take Manager's 'Lock "
-                    "Overrides' toggle (OVERRIDEENABLING_GLOBAL). Check that "
-                    "the target's parameters are overridable on this build."
-                )
-
             # Apply value overrides.
             all_values = list(values)
             for pid, val in extra.items():
@@ -285,6 +282,22 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
                         dtype = _param_dtype(target, descid[0].id)
                         if dtype == c4d.DTYPE_VECTOR:
                             value = c4d.Vector(float(value[0]), float(value[1]), float(value[2]))
+                    if _USE_LEGACY_TAKE_PARAM_API:
+                        # R26 must register each parameter via the Take API.
+                        # OverrideNode alone does not persist vector sub-ids.
+                        backup_value = target[descid]
+                        override = take.FindOrAddOverrideParam(
+                            td, target, descid, value, backup_value, False
+                        )
+                        if override is None:
+                            raise RuntimeError("FindOrAddOverrideParam returned None")
+                    elif override is None:
+                        raise RuntimeError(
+                            "OverrideNode returned None — C4D refused to create the "
+                            "override even after enabling the Take Manager's 'Lock "
+                            "Overrides' toggle (OVERRIDEENABLING_GLOBAL). Check that "
+                            "the target's parameters are overridable on this build."
+                        )
                     # Write the override value first, THEN push it into the
                     # scene node. UpdateSceneNode propagates the override's
                     # stored data, so calling it before the write pushed the

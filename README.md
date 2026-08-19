@@ -210,7 +210,7 @@ Still stuck? Open an [issue](https://github.com/kumoproductions/mcp-cinema4d/iss
 - **`list_graph_node_assets` can return an empty list** on builds where the Maxon asset repository doesn't expose node-template assets through the usual query path. The tool still returns `supported: true` with shape-correct output; treat an empty `assets` array as "discovery unavailable on this C4D build" and pass `$type` asset ids you already know (e.g. from `list_graph_nodes` on an existing material).
 - **Node material friendly names vary.** `apply_graph_description` accepts the declarative `$type` strings documented by Maxon (e.g. `"Standard Material"`), but the resolver varies between 2024 / 2025 / 2026 builds — when in doubt, pass the fully-qualified asset id returned by `list_graph_node_assets` / `list_graph_nodes` instead.
 - **`exec_python` is the only way to seed classical-shader fixtures.** A handful of E2E tests (for `dump_shader`) need to build a shader tree before asserting on it, so they skip cleanly when `C4D_MCP_ENABLE_EXEC_PYTHON` isn't set on both sides. The tools themselves don't require `exec_python`.
-- **Older Cinema 4D versions are not tested.** The CI + E2E suite targets C4D 2026. The bridge guards optional SDK constants with `getattr` fallbacks, so most tools likely work on 2024 / 2025 as well — but we don't verify that and won't accept bug reports that don't reproduce on 2026.
+- **Older Cinema 4D versions.** C4D 2026 remains the CI baseline. Cinema 4D R26.015 on Windows is covered by the bridge's legacy main-thread polling transport and has passed the full E2E suite. Other older builds remain unverified; include the exact C4D version and failing tool call when filing an issue.
 
 ## Contributing
 

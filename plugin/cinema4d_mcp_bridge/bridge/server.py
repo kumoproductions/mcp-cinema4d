@@ -1,4 +1,4 @@
-"""TCP server thread for the Cinema 4D MCP bridge.
+"""TCP transport for the Cinema 4D MCP bridge.
 
 Listens on a TCP port, reads newline-delimited JSON requests from each client,
 hands them to the :class:`Dispatcher` for main-thread execution, and writes
@@ -12,7 +12,9 @@ import hmac
 import json
 import os
 import socket
+import sys
 import threading
+from dataclasses import dataclass, field
 
 from .dispatcher import Dispatcher
 from .handlers._helpers import _json_safe
@@ -35,6 +37,19 @@ _MAX_LINE_BYTES = 256 * 1024 * 1024
 # park a client thread for the whole C4D session.
 _MAX_WAIT_SECONDS = 3600.0
 
+# R26 embeds Python 3.9 and does not reliably run a long-lived Python socket
+# thread. Poll its non-blocking sockets from MessageData.CoreMessage instead.
+# Keep the established background-thread transport for C4D 2026 (Python 3.11).
+_USE_MAIN_THREAD_POLLING = sys.version_info < (3, 11)
+_MAX_WRITE_BYTES_PER_POLL = 1024 * 1024
+
+
+@dataclass
+class _PolledClient:
+    addr: tuple[str, int]
+    incoming: bytearray = field(default_factory=bytearray)
+    outgoing: bytearray = field(default_factory=bytearray)
+
 
 class BridgeServer:
     def __init__(
@@ -48,12 +63,16 @@ class BridgeServer:
         self._host = host
         self._port = port
         self._token = token or None
+        self._main_thread_polling = _USE_MAIN_THREAD_POLLING
         self._server_socket: socket.socket | None = None
         self._accept_thread: threading.Thread | None = None
+        self._polled_clients: dict[socket.socket, _PolledClient] = {}
         self._stop_event = threading.Event()
 
     def start(self) -> None:
-        if self._accept_thread and self._accept_thread.is_alive():
+        if self._server_socket is not None or (
+            self._accept_thread and self._accept_thread.is_alive()
+        ):
             return
         # Refuse to expose the bridge on a non-loopback interface unless the
         # operator explicitly opted in. exec_python = arbitrary code execution,
@@ -97,14 +116,19 @@ class BridgeServer:
                 f"or set C4D_MCP_PORT to a free port."
             )
             raise
-        sock.settimeout(1.0)
+        if self._main_thread_polling:
+            sock.setblocking(False)
+        else:
+            sock.settimeout(1.0)
         self._server_socket = sock
-        self._accept_thread = threading.Thread(
-            target=self._accept_loop, name="c4d-mcp-bridge-accept", daemon=True
-        )
-        self._accept_thread.start()
+        if not self._main_thread_polling:
+            self._accept_thread = threading.Thread(
+                target=self._accept_loop, name="c4d-mcp-bridge-accept", daemon=True
+            )
+            self._accept_thread.start()
         auth_note = " (token auth enabled)" if self._token else ""
-        log(f"listening on {self._host}:{self._port}{auth_note}")
+        mode_note = " (legacy main-thread polling)" if self._main_thread_polling else ""
+        log(f"listening on {self._host}:{self._port}{auth_note}{mode_note}")
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -112,9 +136,21 @@ class BridgeServer:
             with contextlib.suppress(OSError):
                 self._server_socket.close()
             self._server_socket = None
+        for client_socket in tuple(self._polled_clients):
+            self._close_polled_client(client_socket)
         if self._accept_thread is not None:
             self._accept_thread.join(timeout=2.0)
             self._accept_thread = None
+
+    def poll(self) -> None:
+        """Handle legacy C4D socket traffic from the C4D main thread."""
+        if not self._main_thread_polling or self._server_socket is None:
+            return
+        self._accept_polled_clients()
+        for client_socket in tuple(self._polled_clients):
+            self._read_polled_client(client_socket)
+            if client_socket in self._polled_clients:
+                self._write_polled_client(client_socket)
 
     def _accept_loop(self) -> None:
         server = self._server_socket
@@ -189,6 +225,93 @@ class BridgeServer:
             with contextlib.suppress(OSError):
                 client_socket.close()
 
+    def _accept_polled_clients(self) -> None:
+        server = self._server_socket
+        assert server is not None
+        while True:
+            try:
+                client_socket, addr = server.accept()
+            except BlockingIOError:
+                return
+            except OSError:
+                return
+            client_socket.setblocking(False)
+            self._polled_clients[client_socket] = _PolledClient(addr=addr)
+            log(f"accepted connection from {addr}")
+
+    def _read_polled_client(self, client_socket: socket.socket) -> None:
+        client = self._polled_clients.get(client_socket)
+        if client is None:
+            return
+        while True:
+            try:
+                chunk = client_socket.recv(65536)
+            except BlockingIOError:
+                return
+            except OSError as exc:
+                log(f"client loop OSError: {exc}")
+                self._close_polled_client(client_socket)
+                return
+            if not chunk:
+                log(f"client {client.addr} disconnected")
+                self._close_polled_client(client_socket)
+                return
+            client.incoming.extend(chunk)
+            if len(client.incoming) > _MAX_LINE_BYTES and b"\n" not in client.incoming:
+                log(
+                    f"client {client.addr} sent >{_MAX_LINE_BYTES} bytes without a newline; "
+                    "dropping connection"
+                )
+                self._close_polled_client(client_socket)
+                return
+            while b"\n" in client.incoming:
+                newline = client.incoming.index(b"\n")
+                line = bytes(client.incoming[:newline]).strip()
+                del client.incoming[: newline + 1]
+                if not line:
+                    continue
+                if len(line) > _MAX_LINE_BYTES:
+                    log(
+                        f"client {client.addr} sent oversized line "
+                        f"({len(line)} > {_MAX_LINE_BYTES}); rejecting"
+                    )
+                    response_bytes = self._encode(
+                        {
+                            "id": "",
+                            "status": "error",
+                            "error": f"request exceeds {_MAX_LINE_BYTES}-byte limit",
+                        }
+                    )
+                else:
+                    response_bytes = self._handle_line(line)
+                log(f"queued {len(response_bytes)} response bytes for {client.addr}")
+                client.outgoing.extend(response_bytes)
+
+    def _write_polled_client(self, client_socket: socket.socket) -> None:
+        client = self._polled_clients.get(client_socket)
+        if client is None:
+            return
+        remaining = _MAX_WRITE_BYTES_PER_POLL
+        while client.outgoing and remaining:
+            try:
+                sent = client_socket.send(bytes(client.outgoing[:remaining]))
+            except BlockingIOError:
+                return
+            except OSError as exc:
+                log(f"send failed: {exc}")
+                self._close_polled_client(client_socket)
+                return
+            if not sent:
+                self._close_polled_client(client_socket)
+                return
+            del client.outgoing[:sent]
+            remaining -= sent
+
+    def _close_polled_client(self, client_socket: socket.socket) -> None:
+        self._polled_clients.pop(client_socket, None)
+        with contextlib.suppress(OSError):
+            client_socket.close()
+
     def _handle_line(self, line: bytes) -> bytes:
         try:
             msg = json.loads(line.decode("utf-8"))
@@ -218,19 +341,21 @@ class BridgeServer:
                 {"id": request_id, "status": "error", "error": "missing 'command' field"}
             )
 
-        # Let the caller extend the main-thread wait for genuinely long ops
-        # (heavy render / CallCommand). Without this the fixed 60 s cap returns
-        # a timeout error while the op keeps running invisibly. Falls back to
-        # the dispatcher default when the field is absent or invalid.
-        timeout_ms = msg.get("timeout_ms")
-        submit_kwargs = {}
-        is_number = isinstance(timeout_ms, (int, float)) and not isinstance(timeout_ms, bool)
-        if is_number and timeout_ms > 0:
-            # Clamped: an absurd value would park this client thread (and its
-            # socket) for the life of the C4D session.
-            submit_kwargs["timeout"] = min(float(timeout_ms) / 1000.0, _MAX_WAIT_SECONDS)
-
-        pending = self._dispatcher.submit(command, params, **submit_kwargs)
+        if self._main_thread_polling:
+            pending = self._dispatcher.execute(command, params)
+        else:
+            # Let the caller extend the main-thread wait for genuinely long ops
+            # (heavy render / CallCommand). Without this the fixed 60 s cap returns
+            # a timeout error while the op keeps running invisibly. Falls back to
+            # the dispatcher default when the field is absent or invalid.
+            timeout_ms = msg.get("timeout_ms")
+            submit_kwargs = {}
+            is_number = isinstance(timeout_ms, (int, float)) and not isinstance(timeout_ms, bool)
+            if is_number and timeout_ms > 0:
+                # Clamped: an absurd value would park this client thread (and its
+                # socket) for the life of the C4D session.
+                submit_kwargs["timeout"] = min(float(timeout_ms) / 1000.0, _MAX_WAIT_SECONDS)
+            pending = self._dispatcher.submit(command, params, **submit_kwargs)
         if pending.error:
             return self._encode({"id": request_id, "status": "error", "error": pending.error})
         return self._encode({"id": request_id, "status": "ok", "result": pending.result})
