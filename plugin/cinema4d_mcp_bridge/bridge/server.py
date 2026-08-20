@@ -42,6 +42,7 @@ _MAX_WAIT_SECONDS = 3600.0
 # Keep the established background-thread transport for C4D 2026 (Python 3.11).
 _USE_MAIN_THREAD_POLLING = sys.version_info < (3, 11)
 _MAX_REQUESTS_PER_POLL = 32
+_MAX_READ_BYTES_PER_POLL = 1024 * 1024
 _WRITE_CHUNK_BYTES = 1024 * 1024
 
 
@@ -245,6 +246,7 @@ class BridgeServer:
         if client is None:
             return
         requests_processed = 0
+        bytes_received = 0
         while requests_processed < _MAX_REQUESTS_PER_POLL:
             while b"\n" in client.incoming and requests_processed < _MAX_REQUESTS_PER_POLL:
                 newline = client.incoming.index(b"\n")
@@ -273,8 +275,13 @@ class BridgeServer:
             if requests_processed >= _MAX_REQUESTS_PER_POLL:
                 return
 
+            # A client with an unterminated request must not monopolize C4D's
+            # main-thread timer callback. Keep its partial buffer for the next
+            # poll instead of draining up to the global 256 MiB line limit.
+            if bytes_received >= _MAX_READ_BYTES_PER_POLL:
+                return
             try:
-                chunk = client_socket.recv(65536)
+                chunk = client_socket.recv(min(65536, _MAX_READ_BYTES_PER_POLL - bytes_received))
             except BlockingIOError:
                 return
             except OSError as exc:
@@ -285,6 +292,7 @@ class BridgeServer:
                 log(f"client {client.addr} disconnected")
                 self._close_polled_client(client_socket)
                 return
+            bytes_received += len(chunk)
             client.incoming.extend(chunk)
             if len(client.incoming) > _MAX_LINE_BYTES and b"\n" not in client.incoming:
                 log(
