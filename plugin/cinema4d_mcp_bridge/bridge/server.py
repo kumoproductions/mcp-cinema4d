@@ -41,7 +41,8 @@ _MAX_WAIT_SECONDS = 3600.0
 # thread. Poll its non-blocking sockets from MessageData.CoreMessage instead.
 # Keep the established background-thread transport for C4D 2026 (Python 3.11).
 _USE_MAIN_THREAD_POLLING = sys.version_info < (3, 11)
-_MAX_WRITE_BYTES_PER_POLL = 1024 * 1024
+_MAX_REQUESTS_PER_POLL = 32
+_WRITE_CHUNK_BYTES = 1024 * 1024
 
 
 @dataclass
@@ -243,7 +244,35 @@ class BridgeServer:
         client = self._polled_clients.get(client_socket)
         if client is None:
             return
-        while True:
+        requests_processed = 0
+        while requests_processed < _MAX_REQUESTS_PER_POLL:
+            while b"\n" in client.incoming and requests_processed < _MAX_REQUESTS_PER_POLL:
+                newline = client.incoming.index(b"\n")
+                line = bytes(client.incoming[:newline]).strip()
+                del client.incoming[: newline + 1]
+                requests_processed += 1
+                if not line:
+                    continue
+                if len(line) > _MAX_LINE_BYTES:
+                    log(
+                        f"client {client.addr} sent oversized line "
+                        f"({len(line)} > {_MAX_LINE_BYTES}); rejecting"
+                    )
+                    response_bytes = self._encode(
+                        {
+                            "id": "",
+                            "status": "error",
+                            "error": f"request exceeds {_MAX_LINE_BYTES}-byte limit",
+                        }
+                    )
+                else:
+                    response_bytes = self._handle_line(line)
+                log(f"queued {len(response_bytes)} response bytes for {client.addr}")
+                client.outgoing.extend(response_bytes)
+
+            if requests_processed >= _MAX_REQUESTS_PER_POLL:
+                return
+
             try:
                 chunk = client_socket.recv(65536)
             except BlockingIOError:
@@ -264,48 +293,34 @@ class BridgeServer:
                 )
                 self._close_polled_client(client_socket)
                 return
-            while b"\n" in client.incoming:
-                newline = client.incoming.index(b"\n")
-                line = bytes(client.incoming[:newline]).strip()
-                del client.incoming[: newline + 1]
-                if not line:
-                    continue
-                if len(line) > _MAX_LINE_BYTES:
-                    log(
-                        f"client {client.addr} sent oversized line "
-                        f"({len(line)} > {_MAX_LINE_BYTES}); rejecting"
-                    )
-                    response_bytes = self._encode(
-                        {
-                            "id": "",
-                            "status": "error",
-                            "error": f"request exceeds {_MAX_LINE_BYTES}-byte limit",
-                        }
-                    )
-                else:
-                    response_bytes = self._handle_line(line)
-                log(f"queued {len(response_bytes)} response bytes for {client.addr}")
-                client.outgoing.extend(response_bytes)
 
     def _write_polled_client(self, client_socket: socket.socket) -> None:
         client = self._polled_clients.get(client_socket)
         if client is None:
             return
-        remaining = _MAX_WRITE_BYTES_PER_POLL
-        while client.outgoing and remaining:
-            try:
-                sent = client_socket.send(bytes(client.outgoing[:remaining]))
-            except BlockingIOError:
-                return
-            except OSError as exc:
-                log(f"send failed: {exc}")
-                self._close_polled_client(client_socket)
-                return
-            if not sent:
-                self._close_polled_client(client_socket)
-                return
-            del client.outgoing[:sent]
-            remaining -= sent
+        sent_total = 0
+        close_client = False
+        view = memoryview(client.outgoing)
+        try:
+            while sent_total < len(view):
+                try:
+                    sent = client_socket.send(view[sent_total : sent_total + _WRITE_CHUNK_BYTES])
+                except BlockingIOError:
+                    break
+                except OSError as exc:
+                    log(f"send failed: {exc}")
+                    close_client = True
+                    break
+                if not sent:
+                    close_client = True
+                    break
+                sent_total += sent
+        finally:
+            view.release()
+        if sent_total:
+            del client.outgoing[:sent_total]
+        if close_client:
+            self._close_polled_client(client_socket)
 
     def _close_polled_client(self, client_socket: socket.socket) -> None:
         self._polled_clients.pop(client_socket, None)

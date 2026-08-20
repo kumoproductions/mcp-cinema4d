@@ -59,8 +59,13 @@ class MCPBridgePlugin(plugins.MessageData):
             _log(f"CoreMessage fired with PLUGIN_ID={msg_id}")
             self._dispatcher.drain()
         elif msg_id == c4d.MSG_TIMER:
-            self._server.poll()
-            self._dispatcher.drain()
+            from bridge.log import log as _log
+
+            try:
+                self._server.poll()
+                self._dispatcher.drain()
+            except Exception:
+                _log(f"timer poll failed:\n{traceback.format_exc()}")
         return True
 
 

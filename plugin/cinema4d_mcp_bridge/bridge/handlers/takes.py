@@ -58,6 +58,28 @@ def _lock_overrides_restore(td: Any, toggled: bool) -> None:
         c4d.CallCommand(_LOCK_OVERRIDES_COMMAND)
 
 
+def _legacy_parent_value(doc: Any, td: Any, take: Any, target: Any, descid: c4d.DescID) -> Any:
+    """Read a legacy Take override's parent value and restore the active Take."""
+    parent_take = take.GetUp()
+    if parent_take is None:
+        parent_take = td.GetMainTake()
+    if parent_take is None:
+        raise RuntimeError("take has no parent or Main take")
+
+    current_take = td.GetCurrentTake()
+    if current_take == parent_take:
+        return target[descid]
+
+    try:
+        td.SetCurrentTake(parent_take)
+        doc.ExecutePasses(None, True, True, True, c4d.BUILDFLAGS_NONE)
+        return target[descid]
+    finally:
+        if current_take is not None:
+            td.SetCurrentTake(current_take)
+            doc.ExecutePasses(None, True, True, True, c4d.BUILDFLAGS_NONE)
+
+
 def handle_create_take(params: dict[str, Any]) -> dict[str, Any]:
     """Create or update a Take, optionally linking camera and render data.
 
@@ -285,7 +307,9 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
                     if _USE_LEGACY_TAKE_PARAM_API:
                         # R26 must register each parameter via the Take API.
                         # OverrideNode alone does not persist vector sub-ids.
-                        backup_value = target[descid]
+                        # The SDK requires the effective Main/parent value here,
+                        # which may differ from the currently active sibling Take.
+                        backup_value = _legacy_parent_value(doc, td, take, target, descid)
                         override = take.FindOrAddOverrideParam(
                             td, target, descid, value, backup_value, False
                         )
