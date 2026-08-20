@@ -47,12 +47,25 @@ class MCPBridgePlugin(plugins.MessageData):
         token = (os.environ.get("C4D_MCP_TOKEN") or "").strip() or None
         self._server = BridgeServer(self._dispatcher, host=host, port=port, token=token)
 
+    def GetTimer(self):
+        # SpecialEventAdd is normally immediate, but older C4D builds can miss
+        # the matching CoreMessage. The timer keeps queued commands moving.
+        return 100
+
     def CoreMessage(self, msg_id, bc):
         if msg_id == PLUGIN_ID:
             from bridge.log import log as _log
 
             _log(f"CoreMessage fired with PLUGIN_ID={msg_id}")
             self._dispatcher.drain()
+        elif msg_id == c4d.MSG_TIMER:
+            from bridge.log import log as _log
+
+            try:
+                self._server.poll()
+                self._dispatcher.drain()
+            except Exception:
+                _log(f"timer poll failed:\n{traceback.format_exc()}")
         return True
 
 

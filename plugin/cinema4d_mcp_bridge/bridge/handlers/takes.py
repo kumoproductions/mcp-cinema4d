@@ -8,6 +8,7 @@ records per-Take parameter overrides on a target node — the Take system's
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import c4d
@@ -33,6 +34,10 @@ from ._helpers import (
 # toggle is a registered command we can flip via ``CallCommand``.
 _LOCK_OVERRIDES_COMMAND = 431000108
 
+# R26 needs FindOrAddOverrideParam for sub-descriptions such as Vector.Y;
+# C4D 2026 keeps the existing OverrideNode path.
+_USE_LEGACY_TAKE_PARAM_API = sys.version_info < (3, 11)
+
 
 def _lock_overrides_on(td: Any) -> bool:
     """Flip "Lock Overrides" ON if it is off. Returns True when flipped.
@@ -51,6 +56,28 @@ def _lock_overrides_restore(td: Any, toggled: bool) -> None:
     """Undo ``_lock_overrides_on`` — restore the artist's toggle state."""
     if toggled and td.GetOverrideEnabling() & c4d.OVERRIDEENABLING_GLOBAL:
         c4d.CallCommand(_LOCK_OVERRIDES_COMMAND)
+
+
+def _legacy_parent_value(doc: Any, td: Any, take: Any, target: Any, descid: c4d.DescID) -> Any:
+    """Read a legacy Take override's parent value and restore the active Take."""
+    parent_take = take.GetUp()
+    if parent_take is None:
+        parent_take = td.GetMainTake()
+    if parent_take is None:
+        raise RuntimeError("take has no parent or Main take")
+
+    current_take = td.GetCurrentTake()
+    if current_take == parent_take:
+        return target[descid]
+
+    try:
+        td.SetCurrentTake(parent_take)
+        doc.ExecutePasses(None, True, True, True, c4d.BUILDFLAGS_NONE)
+        return target[descid]
+    finally:
+        if current_take is not None:
+            td.SetCurrentTake(current_take)
+            doc.ExecutePasses(None, True, True, True, c4d.BUILDFLAGS_NONE)
 
 
 def handle_create_take(params: dict[str, Any]) -> dict[str, Any]:
@@ -249,19 +276,11 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
                 )
         else:
             override = take.FindOverride(td, target)
-            if override is None:
+            if override is None and not _USE_LEGACY_TAKE_PARAM_API:
                 # OverrideNode(takeData, node, deleteAnim) — the third arg is
                 # required on C4D 2026+. False keeps the scene-side animation
                 # intact (we're only adding an override on top).
                 override = take.OverrideNode(td, target, False)
-            if override is None:
-                raise RuntimeError(
-                    "OverrideNode returned None — C4D refused to create the "
-                    "override even after enabling the Take Manager's 'Lock "
-                    "Overrides' toggle (OVERRIDEENABLING_GLOBAL). Check that "
-                    "the target's parameters are overridable on this build."
-                )
-
             # Apply value overrides.
             all_values = list(values)
             for pid, val in extra.items():
@@ -285,6 +304,24 @@ def handle_take_override(params: dict[str, Any]) -> dict[str, Any]:
                         dtype = _param_dtype(target, descid[0].id)
                         if dtype == c4d.DTYPE_VECTOR:
                             value = c4d.Vector(float(value[0]), float(value[1]), float(value[2]))
+                    if _USE_LEGACY_TAKE_PARAM_API:
+                        # R26 must register each parameter via the Take API.
+                        # OverrideNode alone does not persist vector sub-ids.
+                        # The SDK requires the effective Main/parent value here,
+                        # which may differ from the currently active sibling Take.
+                        backup_value = _legacy_parent_value(doc, td, take, target, descid)
+                        override = take.FindOrAddOverrideParam(
+                            td, target, descid, value, backup_value, False
+                        )
+                        if override is None:
+                            raise RuntimeError("FindOrAddOverrideParam returned None")
+                    elif override is None:
+                        raise RuntimeError(
+                            "OverrideNode returned None — C4D refused to create the "
+                            "override even after enabling the Take Manager's 'Lock "
+                            "Overrides' toggle (OVERRIDEENABLING_GLOBAL). Check that "
+                            "the target's parameters are overridable on this build."
+                        )
                     # Write the override value first, THEN push it into the
                     # scene node. UpdateSceneNode propagates the override's
                     # stored data, so calling it before the write pushed the

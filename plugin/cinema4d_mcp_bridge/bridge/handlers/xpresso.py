@@ -61,6 +61,15 @@ _OPERATOR_ALIASES: dict[str, str] = {
     "python": "ID_OPERATOR_PYTHON",
 }
 
+_STABLE_OPERATOR_NAMES = {
+    int(operator_id): name
+    for operator_id, name in (
+        (getattr(c4d, "ID_OPERATOR_CONST", None), "Constant"),
+        (getattr(c4d, "ID_OPERATOR_RESULT", None), "Result"),
+    )
+    if isinstance(operator_id, int)
+}
+
 
 def _resolve_operator_id(spec: Any) -> int:
     """Return an integer GvNode operator id from int or alias string."""
@@ -78,12 +87,27 @@ def _resolve_operator_id(spec: Any) -> int:
             f"unknown operator alias {spec!r}; accepted: {sorted(_OPERATOR_ALIASES)} "
             "(or pass a numeric ID_OPERATOR_* int)"
         )
+    if key == "python":
+        # Check the security gate before resolving the symbolic constant. Some
+        # older C4D builds omit that constant, but the unsafe alias must still
+        # never bypass C4D_MCP_ENABLE_PYTHON_OPS.
+        _ensure_python_operator_id_allowed(getattr(c4d, const_name, 1022471))
     value = getattr(c4d, const_name, None)
     if value is None:
         raise RuntimeError(
             f"C4D build does not expose c4d.{const_name}; pass a numeric operator_id instead"
         )
     return int(value)
+
+
+def _operator_name(node, operator_id: int | None) -> str:
+    """Return a stable name for common operators, independent of C4D locale."""
+    if operator_id in _STABLE_OPERATOR_NAMES:
+        return _STABLE_OPERATOR_NAMES[operator_id]
+    try:
+        return str(node.GetTypeName())
+    except Exception:
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -345,17 +369,12 @@ def _collect_gv_nodes(root) -> list[dict[str, Any]]:
                 op_id = int(child.GetOperatorID())
             except Exception:
                 op_id = None
-            op_name = ""
-            try:
-                op_name = str(child.GetTypeName())
-            except Exception:
-                op_name = ""
             entry: dict[str, Any] = {
                 "id": path,
                 "parent_id": parent_path if parent_path else None,
                 "name": child.GetName(),
                 "operator_id": op_id,
-                "operator_name": op_name,
+                "operator_name": _operator_name(child, op_id),
                 "is_group": bool(child.IsGroupNode()),
                 "in_ports": [_port_summary(p, child) for p in _in_ports(child)],
                 "out_ports": [_port_summary(p, child) for p in _out_ports(child)],
@@ -651,10 +670,7 @@ def handle_apply_xpresso_graph(params: dict[str, Any]) -> dict[str, Any]:
             "id": info["path"],
             "operator_id": info["operator_id"],
         }
-        try:
-            entry["operator_name"] = str(node.GetTypeName())
-        except Exception:
-            entry["operator_name"] = ""
+        entry["operator_name"] = _operator_name(node, info["operator_id"])
         if caller_id in per_node_errors:
             entry["param_errors"] = per_node_errors[caller_id]
         result_nodes[caller_id] = entry

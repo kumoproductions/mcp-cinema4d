@@ -352,6 +352,49 @@ describe.skipIf(!ready)("takes", () => {
     expect(got.values[0].value[2]).toBe(0);
   });
 
+  test("take_override reads the parent value while a sibling Take is active", async () => {
+    const cam = testName("sibling_cam");
+    const firstTake = testName("sibling_first");
+    const secondTake = testName("sibling_second");
+    const mainTake = await mainTakeName();
+    await c.call("create_entity", { kind: "object", type_id: OCAMERA, name: cam });
+    await c.call("create_take", { name: firstTake });
+    await c.call("create_take", { name: secondTake });
+
+    await c.call("take_override", {
+      take: firstTake,
+      target: { kind: "object", name: cam },
+      values: [{ path: PARAM_REL_POSITION, value: [11, 0, 0] }],
+    });
+    await c.call("set_document", { active_take: firstTake });
+    await c.call("take_override", {
+      take: secondTake,
+      target: { kind: "object", name: cam },
+      values: [{ path: PARAM_REL_POSITION, value: [22, 0, 0] }],
+    });
+
+    await c.call("set_document", { active_take: mainTake });
+    const main = await c.call<{ values: Array<{ value: number[] }> }>("get_params", {
+      handle: { kind: "object", name: cam },
+      ids: [PARAM_REL_POSITION],
+    });
+    expect(main.values[0].value).toEqual([0, 0, 0]);
+
+    await c.call("set_document", { active_take: firstTake });
+    const first = await c.call<{ values: Array<{ value: number[] }> }>("get_params", {
+      handle: { kind: "object", name: cam },
+      ids: [PARAM_REL_POSITION],
+    });
+    expect(first.values[0].value).toEqual([11, 0, 0]);
+
+    await c.call("set_document", { active_take: secondTake });
+    const second = await c.call<{ values: Array<{ value: number[] }> }>("get_params", {
+      handle: { kind: "object", name: cam },
+      ids: [PARAM_REL_POSITION],
+    });
+    expect(second.values[0].value).toEqual([22, 0, 0]);
+  });
+
   test("take_override works on a material target", async () => {
     const MAT_STANDARD = 5703;
     const MATERIAL_USE_COLOR = 2001; // c4d.MATERIAL_USE_COLOR — boolean toggle
