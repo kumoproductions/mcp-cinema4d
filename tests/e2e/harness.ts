@@ -69,15 +69,34 @@ export class MCPTestClient {
     this.client = new Client({ name: "mcp-cinema4d-e2e", version: "0.0.1" }, { capabilities: {} });
   }
 
-  async connect(): Promise<void> {
+  /**
+   * Spawn the server. `envOverrides` adjusts the shell env it inherits —
+   * a value of `undefined` unsets the variable, which is how gate tests
+   * start a server *without* an opt-in the operator may have exported.
+   */
+  async connect(envOverrides: Record<string, string | undefined> = {}): Promise<void> {
     ensureBuilt();
+    // Let the bridge host/port flow through from the shell env.
+    const merged: Record<string, string | undefined> = { ...process.env, ...envOverrides };
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(merged)) {
+      if (value !== undefined) env[key] = value;
+    }
     this.transport = new StdioClientTransport({
       command: process.execPath, // current Node binary
       args: [SERVER_ENTRY],
-      // Let the bridge host/port flow through from the shell env.
-      env: { ...process.env } as Record<string, string>,
+      env,
     });
     await this.client.connect(this.transport);
+  }
+
+  /** Tool names + JSON-schema inputs as the server advertises them. */
+  async listTools(): Promise<Array<{ name: string; inputSchema: Record<string, unknown> }>> {
+    const res = await this.client.listTools();
+    return res.tools.map((t) => ({
+      name: t.name,
+      inputSchema: (t.inputSchema ?? {}) as Record<string, unknown>,
+    }));
   }
 
   async close(): Promise<void> {

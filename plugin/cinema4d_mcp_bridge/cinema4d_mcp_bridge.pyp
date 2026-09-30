@@ -19,6 +19,7 @@ if _PLUGIN_DIR not in sys.path:
     sys.path.insert(0, _PLUGIN_DIR)
 
 try:
+    from bridge import lifecycle
     from bridge.dispatcher import Dispatcher
     from bridge.handlers import HANDLERS
     from bridge.server import BridgeServer
@@ -36,6 +37,7 @@ DEFAULT_PORT = 18710
 class MCPBridgePlugin(plugins.MessageData):
     def __init__(self):
         self._dispatcher = Dispatcher(PLUGIN_ID, HANDLERS)
+        lifecycle.configure(PLUGIN_ID)
         # Prefer unified C4D_MCP_* envvars so one setting covers both sides.
         # Legacy C4D_MCP_BRIDGE_* names are accepted as fallbacks.
         port = int(
@@ -53,6 +55,9 @@ class MCPBridgePlugin(plugins.MessageData):
 
             _log(f"CoreMessage fired with PLUGIN_ID={msg_id}")
             self._dispatcher.drain()
+            # A `quit` handled in that drain (or scheduled by an earlier one)
+            # runs here, after its reply has left the TCP thread.
+            lifecycle.perform_pending_quit()
         return True
 
 

@@ -4,7 +4,7 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 Every CRUD tool identifies entities by a typed `handle` object — see [Entity handles](../README.md#entity-handles).
 
-68 tools across 16 groups.
+72 tools across 17 groups.
 
 ## Basics
 
@@ -185,3 +185,14 @@ LayerObject CRUD and per-layer flag toggles.
 | `assign_to_layer`  | Place a target (object / tag / material) on a named layer.                                               |
 | `get_object_layer` | Return the layer currently assigned to a target entity (object / tag / material), or null if unassigned. |
 | `set_layer_flags`  | Toggle a layer's visibility / render / lock flags in one call.                                           |
+
+## Instances
+
+Run and address several Cinema 4D processes at once. Opt-in via `C4D_MCP_ENABLE_MULTIINSTANCE=1`; every other tool then takes an optional `instance` argument.
+
+| Tool                  | Description                                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `list_instances`      | List the Cinema 4D instances this server can reach and which one is active.                                            |
+| `set_active_instance` | Choose which Cinema 4D instance receives tool calls that omit the `instance` argument.                                 |
+| `launch_instance`     | Start another Cinema 4D process next to the running one, with its own bridge on the next free port, and return its id. |
+| `stop_instance`       | Quit a secondary Cinema 4D instance.                                                                                   |

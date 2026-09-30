@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import type { C4DClient } from "../c4d-client.js";
+import { multiInstanceEnabled } from "../instances.js";
 import type { ToolResult } from "./types.js";
 
 import { addUserDataTool } from "./add-user-data.js";
@@ -30,6 +31,12 @@ import { getObjectLayerTool } from "./get-object-layer.js";
 import { getParamsTool } from "./get-params.js";
 import { getSelectionTool } from "./get-selection.js";
 import { importSceneTool } from "./import-scene.js";
+import {
+  launchInstanceTool,
+  listInstancesTool,
+  setActiveInstanceTool,
+  stopInstanceTool,
+} from "./instances.js";
 import { listDocumentsTool } from "./list-documents.js";
 import { listEntitiesTool } from "./list-entities.js";
 import { listGraphNodeAssetsTool } from "./list-graph-node-assets.js";
@@ -71,7 +78,7 @@ import { setXpressoPortTool } from "./set-xpresso-port.js";
 import { takeOverrideTool } from "./take-override.js";
 import { undoTool } from "./undo.js";
 
-import type { ToolGroup } from "./define-tool.js";
+import type { ToolContext, ToolGroup } from "./define-tool.js";
 
 export type AnyTool = {
   name: string;
@@ -79,7 +86,7 @@ export type AnyTool = {
   description: string;
   group: ToolGroup;
   inputShape: z.ZodRawShape;
-  handler: (args: any, client: C4DClient) => Promise<ToolResult>;
+  handler: (args: any, client: C4DClient, ctx: ToolContext) => Promise<ToolResult>;
 };
 
 /** Every tool registered with the MCP server, grouped by theme. */
@@ -170,13 +177,21 @@ export const ALL_TOOLS: AnyTool[] = [
   setLayerFlagsTool,
   // Document state
   getDocumentStateTool,
+  // Instances (multi-instance mode, opt-in)
+  listInstancesTool,
+  setActiveInstanceTool,
+  launchInstanceTool,
+  stopInstanceTool,
 ];
 
 /**
  * Tools exposed to the MCP client. exec_python is excluded unless
  * `C4D_MCP_ENABLE_EXEC_PYTHON` is set so LLMs don't even see it as an option
- * by default. The bridge plugin enforces the same opt-in server-side.
+ * by default. The bridge plugin enforces the same opt-in server-side. The
+ * instance tools likewise only exist under `C4D_MCP_ENABLE_MULTIINSTANCE`.
  */
-export const TOOLS: AnyTool[] = ALL_TOOLS.filter(
-  (t) => !(t.name === "exec_python" && !execPythonEnabled()),
-);
+export const TOOLS: AnyTool[] = ALL_TOOLS.filter((t) => {
+  if (t.name === "exec_python") return execPythonEnabled();
+  if (t.group === "instances") return multiInstanceEnabled();
+  return true;
+});

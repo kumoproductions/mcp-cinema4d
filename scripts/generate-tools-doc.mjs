@@ -57,6 +57,12 @@ const GROUP_META = [
   { id: "mograph", title: "MoGraph", blurb: "Read derived MoGraph state." },
   { id: "animation", title: "Animation", blurb: "Enumerate CTracks and edit keyframes." },
   { id: "layers", title: "Layers", blurb: "LayerObject CRUD and per-layer flag toggles." },
+  {
+    id: "instances",
+    title: "Instances",
+    blurb:
+      "Run and address several Cinema 4D processes at once. Opt-in via `C4D_MCP_ENABLE_MULTIINSTANCE=1`; every other tool then takes an optional `instance` argument.",
+  },
 ];
 
 // First-line summary for the table. Keep tool source descriptions free-form;
