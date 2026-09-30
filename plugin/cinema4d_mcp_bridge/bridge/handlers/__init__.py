@@ -33,10 +33,12 @@ Submodules (organised by domain, not by workflow):
   user_data      — add/list/remove_user_data
   mograph        — list_mograph_clones
   script         — exec_python, call_command, list_plugins, batch
+  (bridge/lifecycle.py) — quit; multi-instance mode only
 """
 
 from __future__ import annotations
 
+from ..lifecycle import handle_quit
 from .animation import (
     handle_delete_keyframe,
     handle_delete_track,
@@ -208,6 +210,8 @@ HANDLERS = {
     "apply_xpresso_graph": handle_apply_xpresso_graph,
     "set_xpresso_port": handle_set_xpresso_port,
     "remove_xpresso_node": handle_remove_xpresso_node,
+    # Gated inside the handler on C4D_MCP_ENABLE_MULTIINSTANCE, like exec_python.
+    "quit": handle_quit,
 }
 
 __all__ = ["HANDLERS"]

@@ -101,7 +101,7 @@ bridge のソケットを変えるには、同じ `env` マップと C4D 起動�
 
 ## ツール
 
-全 68 ツール、16 グループ。ツールはプロンプトに応じて LLM 自身が選ぶため、直接呼び出す場面はほとんどありません。ツールごとの説明つきの一覧は [docs/TOOLS.md](./docs/TOOLS.md) を参照してください。
+全 72 ツール、17 グループ。ツールはプロンプトに応じて LLM 自身が選ぶため、直接呼び出す場面はほとんどありません。ツールごとの説明つきの一覧は [docs/TOOLS.md](./docs/TOOLS.md) を参照してください。
 
 | グループ                         | 数  | 内容                                                                                                                                                                                                                                 |
 | -------------------------------- | :-: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -116,6 +116,7 @@ bridge のソケットを変えるには、同じ `env` マップと C4D 起動�
 | Tag helpers / Animation          |  5  | `assign_material`。`list_tracks`、`get_keyframes`、`delete_keyframe`、`delete_track`。                                                                                                                                               |
 | Transforms / User data / MoGraph |  5  | `set_transform`。`add_user_data` / `list_user_data` / `remove_user_data`。`list_mograph_clones`。                                                                                                                                    |
 | Layers                           |  5  | 列挙、作成、割り当て、照会、フラグ切り替え（solo / view / render / locked ほか）。                                                                                                                                                   |
+| Instances（オプトイン）          |  4  | `list_instances`、`set_active_instance`、`launch_instance`、`stop_instance`。1 つのサーバーから複数の Cinema 4D プロセスを操作する。`C4D_MCP_ENABLE_MULTIINSTANCE=1` を設定しない限り非公開。                                        |
 
 ## エンティティハンドル
 
@@ -154,14 +155,27 @@ Cinema 4D の `Preferences → Plugins → Add` でカスタム検索パスを�
 
 ## 設定
 
-| 変数                         | 側             | デフォルト  | 説明                                                                                                                                                                                                                                                                                                          |
-| ---------------------------- | -------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `C4D_MCP_HOST`               | 両側           | `127.0.0.1` | TCP bridge のホスト。旧エイリアス: `C4D_BRIDGE_HOST`（Node）、`C4D_MCP_BRIDGE_HOST`（プラグイン）。                                                                                                                                                                                                           |
-| `C4D_MCP_PORT`               | 両側           | `18710`     | TCP bridge のポート。旧エイリアス: `C4D_BRIDGE_PORT`、`C4D_MCP_BRIDGE_PORT`。                                                                                                                                                                                                                                 |
-| `C4D_MCP_ENABLE_EXEC_PYTHON` | 両側           | 未設定      | **オプトイン。** 両側で `1`（または `true`/`yes`/`on`）に設定すると `exec_python` ツールが公開されます。[セキュリティ](#セキュリティ)を参照。                                                                                                                                                                 |
-| `C4D_MCP_ENABLE_PYTHON_OPS`  | C4D プラグイン | 未設定      | **オプトイン。** `1` に設定すると、Python を内包するプラグイン型（Python タグ、Python ジェネレータ、MoGraph Python エフェクタ、Python フィールド（Fpython、440000277）、Xpresso Python オペレータ）の作成と編集を許可します。デフォルトは無効。コードパラメータが `exec_python` と同等の RCE になるためです。 |
-| `C4D_MCP_TOKEN`              | 両側           | 未設定      | 共有シークレット。C4D 側に設定した場合、Node クライアントは同じ値を送る必要があります。強く推奨。                                                                                                                                                                                                             |
-| `C4D_MCP_ALLOW_REMOTE`       | C4D プラグイン | 未設定      | `C4D_MCP_HOST` を非ループバックのインターフェースへバインドするために必要。未設定の場合、bridge は起動を拒否します。                                                                                                                                                                                          |
+| 変数                           | 側             | デフォルト  | 説明                                                                                                                                                                                                                                                                                                          |
+| ------------------------------ | -------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `C4D_MCP_HOST`                 | 両側           | `127.0.0.1` | TCP bridge のホスト。旧エイリアス: `C4D_BRIDGE_HOST`（Node）、`C4D_MCP_BRIDGE_HOST`（プラグイン）。                                                                                                                                                                                                           |
+| `C4D_MCP_PORT`                 | 両側           | `18710`     | TCP bridge のポート。旧エイリアス: `C4D_BRIDGE_PORT`、`C4D_MCP_BRIDGE_PORT`。                                                                                                                                                                                                                                 |
+| `C4D_MCP_ENABLE_EXEC_PYTHON`   | 両側           | 未設定      | **オプトイン。** 両側で `1`（または `true`/`yes`/`on`）に設定すると `exec_python` ツールが公開されます。[セキュリティ](#セキュリティ)を参照。                                                                                                                                                                 |
+| `C4D_MCP_ENABLE_PYTHON_OPS`    | C4D プラグイン | 未設定      | **オプトイン。** `1` に設定すると、Python を内包するプラグイン型（Python タグ、Python ジェネレータ、MoGraph Python エフェクタ、Python フィールド（Fpython、440000277）、Xpresso Python オペレータ）の作成と編集を許可します。デフォルトは無効。コードパラメータが `exec_python` と同等の RCE になるためです。 |
+| `C4D_MCP_TOKEN`                | 両側           | 未設定      | 共有シークレット。C4D 側に設定した場合、Node クライアントは同じ値を送る必要があります。強く推奨。                                                                                                                                                                                                             |
+| `C4D_MCP_ALLOW_REMOTE`         | C4D プラグイン | 未設定      | `C4D_MCP_HOST` を非ループバックのインターフェースへバインドするために必要。未設定の場合、bridge は起動を拒否します。                                                                                                                                                                                          |
+| `C4D_MCP_ENABLE_MULTIINSTANCE` | MCP server     | 未設定      | **オプトイン。** `1` に設定すると、インスタンス系ツール（`list_instances`、`set_active_instance`、`launch_instance`、`stop_instance`）が公開され、他のすべてのツールに任意の `instance` 引数が追加されます。[複数の Cinema 4D インスタンス](#複数の-cinema-4d-インスタンス)を参照。                           |
+| `C4D_MCP_EXE`                  | MCP server     | 自動検出    | `launch_instance` が起動する Cinema 4D の実行ファイル。未設定なら `C:\Program Files\Maxon Cinema 4D <ver>`（Windows）または `/Applications/Maxon Cinema 4D <ver>`（macOS）配下の最新版。                                                                                                                      |
+| `C4D_MCP_MAX_INSTANCES`        | MCP server     | `3`         | プライマリを含むインスタンス枠の数。インスタンス `id` は `C4D_MCP_PORT + id` で待受します。                                                                                                                                                                                                                   |
+
+### 複数の Cinema 4D インスタンス
+
+デフォルトは無効です。**MCP server** に `C4D_MCP_ENABLE_MULTIINSTANCE=1` を設定すると、1 つのサーバーから複数の Cinema 4D プロセスを操作できます。たとえば、作業中のシーンに触れずに、使い捨てのインスタンスで重いテストレンダーを回す、といった使い方です。
+
+- `list_instances` は到達可能なインスタンスを列挙します。インスタンス `0` がプライマリ（`C4D_MCP_PORT`）で、それ以外は `C4D_MCP_PORT + id` のポートに対応します。id はサーバーを再起動しても変わらず、以前のセッションが起動したインスタンスもそのまま拾い直します。
+- `launch_instance` は `g_allowParallelInstance=true`（同一インストールの多重起動を許可する Cinema 4D 自身のスイッチ）付きで新しい Cinema 4D を起動し、専用の bridge ポートとサーバーの環境（トークンと各オプトインを含む）を引き継がせます。コールドスタートには 1〜2 分と、インスタンスあたり数 GB のメモリが必要です。総数は `C4D_MCP_MAX_INSTANCES` で制限します（デフォルト 3、プライマリを含む）。
+- 他のすべてのツールに任意の `instance` 引数が追加されます。省略した呼び出しはアクティブなインスタンス（`set_active_instance`）へ送られます。アクティブ状態はセッション全体で共有されるため、異なるインスタンスへ並列に呼び出すときは `instance` を明示してください。
+- `stop_instance` はセカンダリインスタンスを終了します。未保存のドキュメントは確認なしに破棄されます。インスタンス `0` は対象になりません。bridge が `quit` を受け付けるのは、その Cinema 4D プロセス自身の環境に `C4D_MCP_ENABLE_MULTIINSTANCE` が設定されているときだけです。`launch_instance` で起動したインスタンスは該当し、自分で起動した Cinema 4D は該当しません。
+- サーバーが起動したインスタンスは、サーバー終了後も動き続けます。全インスタンスが同じ設定フォルダを共有し、最後に終了したものが設定を書き込むため、使い捨てインスタンスで設定を変更しないでください。
 
 ## セキュリティ
 
@@ -171,6 +185,7 @@ Cinema 4D の `Preferences → Plugins → Add` でカスタム検索パスを�
 - **Python を内包するプラグイン型もオプトインです。** Python タグ（`Tpython`）、Python ジェネレータ（`Opython`）、MoGraph Python エフェクタ、Python フィールド（`Fpython`）、Xpresso Python オペレータは、呼び出し側が与えたソースコードをコンテナに保持し、シーン評価時に実行します。つまり `exec_python` と同等の RCE です。C4D 側に `C4D_MCP_ENABLE_PYTHON_OPS=1` を設定しない限り、bridge はこれらの型を対象とする `create_entity`、`set_params`、`apply_xpresso_graph`、`take_override` の操作を拒否します。既存インスタンスの列挙、読み取り、削除には影響しません。
 - **共有シークレットのトークン（`C4D_MCP_TOKEN`）を設定してください。** localhost は信頼境界ではありません。同じユーザーで動く他のローカルプロセスも接続できてしまいます。JSON スニペットは[クライアント設定](#クライアント設定)を参照。
 - **デフォルトはループバック、リモートはオプトイン。** bridge はデフォルトで `127.0.0.1` にバインドします。`C4D_MCP_HOST` を非ループバックのインターフェースへ向けると、`C4D_MCP_ALLOW_REMOTE=1` も設定しない限り**起動を拒否**します。1 文字の打ち間違い（`0.0.0.0`）で C4D を LAN に公開する事故を防ぐためです。
+- **マルチインスタンスモードはプロセスを起動します。** `C4D_MCP_ENABLE_MULTIINSTANCE=1` のとき、`launch_instance` は Cinema 4D の実行ファイルを起動します。実行ファイルは `C4D_MCP_EXE` かデフォルトのインストール先からのみ決まり、ツール引数からは受け取りません。新しいプロセスはサーバーの環境を引き継ぐため、トークンと各 `C4D_MCP_ENABLE_*` オプトインもそのまま適用されます。デフォルトは無効です。
 - **信頼できる MCP クライアントだけを接続してください。** 変更系のツール（オプトインした場合は特に `exec_python`）が自動承認されないよう、ツール使用の権限設定を確認してください。
 - **シーン内容経由の間接プロンプトインジェクション。** シーンデータ（オブジェクト名、パラメータ文字列、読み込んだファイルパス）は `list_entities` / `describe` / `get_container` / `dump_shader` / `get_mesh` を通じて LLM へ戻ります。`exec_python` が有効なとき、シーン内の悪意ある文字列がモデルを誘導して任意の Python を実行させる可能性があります。`exec_python` が有効な間は、信頼できない `.c4d` / `.fbx` / `.abc` ファイルに対して `import_scene` を実行しないでください。また `exec_python` / `call_command` / `save_document` / `import_scene` は一括承認せず、MCP クライアントの呼び出しごとの承認に頼ってください。
 - **監査ログ。** すべての `exec_python` 呼び出しは、事後レビューのためコード本文をローカルの bridge ログ（Windows は `%TEMP%/cinema4d_mcp_bridge.log`、macOS は `$TMPDIR/cinema4d_mcp_bridge.log`）に記録します。ログは追記のみでローテーションされないため、肥大化したら手動で削除してください。

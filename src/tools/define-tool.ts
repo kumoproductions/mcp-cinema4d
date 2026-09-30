@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import type { C4DClient } from "../c4d-client.js";
+import type { InstanceRegistry } from "../instances.js";
 import type { ToolResult } from "./types.js";
 
 export type ToolGroup =
@@ -18,7 +19,14 @@ export type ToolGroup =
   | "user-data"
   | "mograph"
   | "animation"
-  | "layers";
+  | "layers"
+  | "instances";
+
+/** Server-wide services a handler may need beyond the routed client. */
+export interface ToolContext {
+  /** Instance registry in multi-instance mode; null unless C4D_MCP_ENABLE_MULTIINSTANCE is set. */
+  instances: InstanceRegistry | null;
+}
 
 export type ToolSpec<S extends z.ZodRawShape> = {
   name: string;
@@ -26,7 +34,11 @@ export type ToolSpec<S extends z.ZodRawShape> = {
   description: string;
   group: ToolGroup;
   inputShape: S;
-  handler: (args: { [K in keyof S]: z.infer<S[K]> }, client: C4DClient) => Promise<ToolResult>;
+  handler: (
+    args: { [K in keyof S]: z.infer<S[K]> },
+    client: C4DClient,
+    ctx: ToolContext,
+  ) => Promise<ToolResult>;
 };
 
 /**

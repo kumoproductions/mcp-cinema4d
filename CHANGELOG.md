@@ -3,6 +3,24 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Multi-instance mode (opt-in).** Set `C4D_MCP_ENABLE_MULTIINSTANCE=1` on the
+  MCP server to drive several Cinema 4D processes from one server: new
+  `list_instances`, `set_active_instance`, `launch_instance` and
+  `stop_instance` tools, plus an optional `instance` argument on every other
+  tool (calls without it go to the active instance). `launch_instance` starts
+  Cinema 4D with `g_allowParallelInstance=true` — its own switch for running a
+  second instance of one installation — on the next free port
+  (`C4D_MCP_PORT + id`), inheriting the server's environment so the token and
+  opt-ins match. `C4D_MCP_EXE` overrides the auto-detected executable and
+  `C4D_MCP_MAX_INSTANCES` caps the slots (default 3). The bridge gained a
+  `quit` command for `stop_instance`, honoured only when the flag is set in
+  the Cinema 4D process's own environment, and `ping` now reports the
+  process id.
+
 ## [0.4.3] - 2026-08-18
 
 ### Fixed

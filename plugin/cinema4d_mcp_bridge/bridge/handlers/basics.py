@@ -14,7 +14,9 @@ from ._helpers import _require_writable_path
 
 
 def handle_ping(_params: dict[str, Any]) -> dict[str, Any]:
-    return {"pong": True, "c4d_version": c4d.GetC4DVersion()}
+    # pid lets the MCP server tell instances apart (and stop one it did not
+    # spawn itself) in multi-instance mode.
+    return {"pong": True, "c4d_version": c4d.GetC4DVersion(), "pid": os.getpid()}
 
 
 def handle_undo(params: dict[str, Any]) -> dict[str, Any]:

@@ -82,21 +82,22 @@ openssl rand -hex 16
 
 ## 工具
 
-共有 64 个工具，分为 16 组。LLM 会按提示自行选择，通常无需手动调用。完整逐项说明见 [docs/TOOLS.md](./docs/TOOLS.md)。
+共有 72 个工具，分为 17 组。LLM 会按提示自行选择，通常无需手动调用。完整逐项说明见 [docs/TOOLS.md](./docs/TOOLS.md)。
 
-| 分组                             | 数量 | 内容                                                                     |
-| -------------------------------- | :--: | ------------------------------------------------------------------------ |
-| Basics                           |  4   | `ping`、`render`、`preview_render`、`reset_scene`                        |
-| Script-style                     |  5   | `exec_python`（需开启）、`call_command`、`list_plugins`、`undo`、`batch` |
-| Generic CRUD                     |  9   | `list_entities`、`describe`、参数与容器读取/设置、创建/移除实体、关键帧  |
-| Shot setup                       |  7   | 文档状态、fps、帧范围、相机、导入、RenderData、Take                      |
-| Selection / Hierarchy            |  4   | 选择、重新设父级、排序、克隆                                             |
-| Modeling / Mesh                  |  4   | 建模命令、网格读写、网格选择                                             |
-| Document I/O                     |  6   | 保存、打开、新建、列出、切换与关闭文档                                   |
-| Node graphs                      |  10  | 节点材质与 Xpresso 图                                                    |
-| Tags / Animation                 |  5   | 材质指定、轨道与关键帧                                                   |
-| Transforms / User data / MoGraph |  5   | 变换、用户数据、MoGraph clones                                           |
-| Layers                           |  5   | 图层枚举、创建、指定、查询与开关                                         |
+| 分组                             | 数量 | 内容                                                                                                                 |
+| -------------------------------- | :--: | -------------------------------------------------------------------------------------------------------------------- |
+| Basics                           |  4   | `ping`、`render`、`preview_render`、`reset_scene`                                                                    |
+| Script-style                     |  5   | `exec_python`（需开启）、`call_command`、`list_plugins`、`undo`、`batch`                                             |
+| Generic CRUD                     |  9   | `list_entities`、`describe`、参数与容器读取/设置、创建/移除实体、关键帧                                              |
+| Shot setup                       |  7   | 文档状态、fps、帧范围、相机、导入、RenderData、Take                                                                  |
+| Selection / Hierarchy            |  4   | 选择、重新设父级、排序、克隆                                                                                         |
+| Modeling / Mesh                  |  4   | 建模命令、网格读写、网格选择                                                                                         |
+| Document I/O                     |  6   | 保存、打开、新建、列出、切换与关闭文档                                                                               |
+| Node graphs                      |  10  | 节点材质与 Xpresso 图                                                                                                |
+| Tags / Animation                 |  5   | 材质指定、轨道与关键帧                                                                                               |
+| Transforms / User data / MoGraph |  5   | 变换、用户数据、MoGraph clones                                                                                       |
+| Layers                           |  5   | 图层枚举、创建、指定、查询与开关                                                                                     |
+| Instances（需开启）              |  4   | `list_instances`、`set_active_instance`、`launch_instance`、`stop_instance`；需设置 `C4D_MCP_ENABLE_MULTIINSTANCE=1` |
 
 ## Entity handles
 
@@ -130,14 +131,21 @@ CRUD 工具使用有类型的 `handle` 对象识别实体。场景中若有同�
 
 ## 配置
 
-| 变量                         | 位置       | 默认值      | 说明                                               |
-| ---------------------------- | ---------- | ----------- | -------------------------------------------------- |
-| `C4D_MCP_HOST`               | 两端       | `127.0.0.1` | TCP bridge 的主机。                                |
-| `C4D_MCP_PORT`               | 两端       | `18710`     | TCP bridge 端口。                                  |
-| `C4D_MCP_ENABLE_EXEC_PYTHON` | 两端       | 未设置      | 选择启用；两端均设为 `1` 才暴露 `exec_python`。    |
-| `C4D_MCP_ENABLE_PYTHON_OPS`  | C4D plugin | 未设置      | 选择启用；允许创建或编辑含 Python 源码的插件类型。 |
-| `C4D_MCP_TOKEN`              | 两端       | 未设置      | 共享密钥，强烈建议设置。                           |
-| `C4D_MCP_ALLOW_REMOTE`       | C4D plugin | 未设置      | 非 loopback 地址绑定必须设为 `1`。                 |
+| 变量                           | 位置       | 默认值      | 说明                                                                        |
+| ------------------------------ | ---------- | ----------- | --------------------------------------------------------------------------- |
+| `C4D_MCP_HOST`                 | 两端       | `127.0.0.1` | TCP bridge 的主机。                                                         |
+| `C4D_MCP_PORT`                 | 两端       | `18710`     | TCP bridge 端口。                                                           |
+| `C4D_MCP_ENABLE_EXEC_PYTHON`   | 两端       | 未设置      | 选择启用；两端均设为 `1` 才暴露 `exec_python`。                             |
+| `C4D_MCP_ENABLE_PYTHON_OPS`    | C4D plugin | 未设置      | 选择启用；允许创建或编辑含 Python 源码的插件类型。                          |
+| `C4D_MCP_TOKEN`                | 两端       | 未设置      | 共享密钥，强烈建议设置。                                                    |
+| `C4D_MCP_ALLOW_REMOTE`         | C4D plugin | 未设置      | 非 loopback 地址绑定必须设为 `1`。                                          |
+| `C4D_MCP_ENABLE_MULTIINSTANCE` | MCP server | 未设置      | 选择启用；设为 `1` 后暴露实例工具，并为其他工具添加可选的 `instance` 参数。 |
+| `C4D_MCP_EXE`                  | MCP server | 自动检测    | `launch_instance` 使用的 Cinema 4D 可执行文件。                             |
+| `C4D_MCP_MAX_INSTANCES`        | MCP server | `3`         | 实例槽位总数（含主实例）；实例 `id` 监听 `C4D_MCP_PORT + id`。              |
+
+### 多个 Cinema 4D 实例
+
+默认关闭。在 **MCP server** 上设置 `C4D_MCP_ENABLE_MULTIINSTANCE=1` 后，一个 server 可以驱动多个 Cinema 4D 进程：`list_instances`、`set_active_instance`、`launch_instance`、`stop_instance` 四个工具会出现，其余所有工具都会多一个可选的 `instance` 参数（省略时发往当前活动实例）。`launch_instance` 以 `g_allowParallelInstance=true` 启动新的 Cinema 4D，端口为 `C4D_MCP_PORT + id`，并继承 server 的环境变量（包括 token 与各项选择启用）。冷启动需要 1–2 分钟和数 GB 内存。`stop_instance` 会丢弃该实例未保存的文档，且永远不会作用于实例 `0`。所有实例共享同一个偏好设置目录，请勿在临时实例中修改设置。
 
 ## 安全
 
@@ -150,6 +158,7 @@ CRUD 工具使用有类型的 `handle` 对象识别实体。场景中若有同�
 - 只连接可信的 MCP 客户端；不要自动允许危险的写入工具。
 - 场景内容可能造成间接提示注入。开启 `exec_python` 时，不要对不可信 `.c4d`、`.fbx`、`.abc` 文件使用 `import_scene`；对于 `exec_python`、`call_command`、`save_document`、`import_scene` 保留逐次授权。
 - 每次 `exec_python` 调用都会将代码写入本地 bridge log：Windows 为 `%TEMP%/cinema4d_mcp_bridge.log`，macOS 为 `$TMPDIR/cinema4d_mcp_bridge.log`。日志只追加、不自动轮转，需要时请手动清理。
+- **多实例模式会启动进程。** 设置 `C4D_MCP_ENABLE_MULTIINSTANCE=1` 后，`launch_instance` 会启动 Cinema 4D 可执行文件。路径只来自 `C4D_MCP_EXE` 或默认安装位置，绝不来自工具参数；新进程继承 server 的环境变量，因此 token 与各项 `C4D_MCP_ENABLE_*` 同样生效。默认关闭。
 
 ## 排错
 
