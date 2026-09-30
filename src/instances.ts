@@ -98,6 +98,8 @@ export class InstanceRegistry {
   private readonly records = new Map<number, InstanceRecord>();
   /** port → time it was released, for the TIME_WAIT cooldown. */
   private readonly cooldown = new Map<number, number>();
+  /** Slots a launch() has claimed but not yet recorded. */
+  private readonly reserved = new Set<number>();
   private activeId = 0;
 
   constructor(primary: C4DClient, options: InstanceRegistryOptions) {
@@ -170,7 +172,14 @@ export class InstanceRegistry {
     const exe = resolveC4DExecutable(this.exePath);
     const id = this.allocateId();
     const port = this.basePort + id;
-    await assertPortFree(this.host, port);
+    // Hold the slot across the await so a concurrent launch picks another one.
+    // Everything after it up to records.set() is synchronous.
+    this.reserved.add(id);
+    try {
+      await assertPortFree(this.host, port);
+    } finally {
+      this.reserved.delete(id);
+    }
     const logPath = path.join(os.tmpdir(), `mcp-cinema4d-instance-${port}.log`);
     // Inherit this server's environment so the token and every C4D_MCP_ENABLE_*
     // opt-in match on both sides; only the bridge endpoint differs.
@@ -348,7 +357,7 @@ export class InstanceRegistry {
   private async discover(): Promise<void> {
     const candidates: number[] = [];
     for (let id = 1; id < this.maxInstances; id++) {
-      if (!this.records.has(id)) candidates.push(id);
+      if (!this.records.has(id) && !this.reserved.has(id)) candidates.push(id);
     }
     await Promise.all(
       candidates.map(async (id) => {
@@ -388,7 +397,7 @@ export class InstanceRegistry {
   private allocateId(): number {
     const free: number[] = [];
     for (let id = 1; id < this.maxInstances; id++) {
-      if (!this.records.has(id)) free.push(id);
+      if (!this.records.has(id) && !this.reserved.has(id)) free.push(id);
     }
     if (free.length === 0) {
       throw new Error(
@@ -405,6 +414,9 @@ export class InstanceRegistry {
 
   private release(rec: InstanceRecord, message: string): void {
     rec.client.close();
+    // A child can emit both "error" and "exit"; the later callback must not
+    // drop a newer record that has since taken over the slot.
+    if (this.records.get(rec.id) !== rec) return;
     this.records.delete(rec.id);
     this.cooldown.set(rec.port, Date.now());
     if (this.activeId === rec.id) this.activeId = 0;
