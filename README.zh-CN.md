@@ -6,6 +6,17 @@
 
 让 LLM 驱动 Cinema 4D。**mcp-cinema4d** 将兼容 MCP 的客户端（Claude Desktop、Claude Code 或其他支持 stdio 的 MCP 客户端）连接到正在运行的 Cinema 4D 2026 会话。模型可通过有类型、支持撤销的工具层检查场景层级、创建镜头、构建节点材质和绑定动画，而不是把任意 Python 粘贴到 Script Manager。
 
+> [!IMPORTANT]
+> **Cinema 4D 现已内置官方 MCP server。**自 Cinema 4D 2026.4 起，Maxon 将 MCP server 集成到 Cinema 4D 本体中：无需安装，在 **Preferences → MCP** 中设置，并由 Maxon 提供支持。如果你使用 2026.4 或更高版本，只是想在 Cinema 4D 中使用 AI 助手，请先试用官方 server，详见 Maxon 的 [MCP Server 页面](https://www.maxon.net/en/cinema-4d/features/mcp-server) 和[文档](https://help.maxon.net/c4d/en-us/Content/html/MCPADAPTERPREFS.html)。
+>
+> mcp-cinema4d 是独立的社区项目。在官方 server 不适用的场景下，它仍是一个选择：
+>
+> - **Cinema 4D 2026.0–2026.3**：这些版本没有内置 server。
+> - **在一个会话中操作多个 Cinema 4D 进程**（多实例模式）：官方 server 的文档未涉及此用途。
+> - **开源**：可自行阅读、审计或扩展工具与 bridge。
+>
+> **不要在同一个客户端中同时注册两个 server。**两者的工具有重叠（例如都提供 `exec_python`），模型会看到两套相互竞争的 Cinema 4D 工具。Maxon 的 [FAQ](https://help.maxon.net/c4d/en-us/Content/html/MCP_Server_FAQ.html) 也要求在使用内置 server 时关闭第三方 server。
+
 **适合：**场景审计、镜头设置、Redshift 节点材质、程序化批量编辑和 Xpresso 绑定。
 
 > [!CAUTION]

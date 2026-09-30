@@ -12,6 +12,17 @@ Let an LLM drive Cinema 4D. **mcp-cinema4d** bridges MCP-compatible clients (Cla
 > [日本語](README.ja.md)
 > [简体中文](README.zh-CN.md)
 
+> [!IMPORTANT]
+> **Cinema 4D now ships an official MCP server.** From Cinema 4D 2026.4, Maxon builds an MCP server into Cinema 4D itself: nothing to install, set up from **Preferences → MCP**, and supported by Maxon. If you run 2026.4 or later and simply want an AI assistant in Cinema 4D, start there — see Maxon's [MCP Server page](https://www.maxon.net/en/cinema-4d/features/mcp-server) and [documentation](https://help.maxon.net/c4d/en-us/Content/html/MCPADAPTERPREFS.html).
+>
+> mcp-cinema4d is an independent community project. It remains an option where the built-in server does not fit:
+>
+> - **Cinema 4D 2026.0–2026.3**, which have no built-in server.
+> - **Several Cinema 4D processes from one session** ([multi-instance mode](#multiple-cinema-4d-instances)), which the built-in server's documentation does not cover.
+> - **Open source** — read, audit, or extend the tools and the bridge yourself.
+>
+> **Do not register both servers in the same client.** Their tool sets overlap (both expose `exec_python`, for example), so the model is offered two competing sets of Cinema 4D tools. Maxon's [FAQ](https://help.maxon.net/c4d/en-us/Content/html/MCP_Server_FAQ.html) likewise asks you to switch third-party servers off while you use the built-in one.
+
 **Good for:**
 
 - **Scene audits** — "List every object on the `hero` layer; flag any with non-uniform scale or missing Texture tags."

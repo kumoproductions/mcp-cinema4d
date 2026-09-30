@@ -11,6 +11,17 @@ LLM に Cinema 4D を操作させる。**mcp-cinema4d** は、MCP 対応クラ�
 
 > [English](README.md)
 
+> [!IMPORTANT]
+> **Cinema 4D に公式の MCP サーバーが搭載されました。** Cinema 4D 2026.4 以降では、Maxon が MCP サーバーを本体に組み込んでいます。インストールは不要で、**Preferences → MCP** から設定でき、Maxon のサポート対象です。2026.4 以降を使っていて、Cinema 4D で AI アシスタントを使いたいだけであれば、まず公式のサーバーを試してください。詳しくは Maxon の [MCP Server ページ](https://www.maxon.net/en/cinema-4d/features/mcp-server) と [ドキュメント](https://help.maxon.net/c4d/en-us/Content/html/MCPADAPTERPREFS.html) を参照してください。
+>
+> mcp-cinema4d は独立したコミュニティプロジェクトです。公式のサーバーが合わない次のような場合には、引き続き選択肢になります。
+>
+> - **Cinema 4D 2026.0〜2026.3 を使う場合。** これらのバージョンには公式のサーバーがありません。
+> - **1 つのセッションから複数の Cinema 4D を操作したい場合。**（[マルチインスタンスモード](#複数の-cinema-4d-インスタンス)）公式のサーバーのドキュメントには、この用途の記載がありません。
+> - **ソースを読みたい場合。** ツールとブリッジのコードをすべて公開しているので、監査や拡張ができます。
+>
+> **同じクライアントに両方のサーバーを登録しないでください。** ツールが重複しているため（たとえばどちらも `exec_python` を持っています）、モデルには Cinema 4D 用のツールが 2 組並んで見えてしまいます。Maxon の [FAQ](https://help.maxon.net/c4d/en-us/Content/html/MCP_Server_FAQ.html) でも、公式のサーバーを使う間はサードパーティのサーバーをオフにするよう案内しています。
+
 **得意なこと:**
 
 - **シーン監査**（「`hero` レイヤー上の全オブジェクトを列挙し、非一様スケールや Texture タグの欠落があれば指摘して」）
