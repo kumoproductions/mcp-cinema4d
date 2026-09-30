@@ -6,12 +6,12 @@
     "url": "https://github.com/kumoproductions/mcp-cinema4d",
     "source": "github"
   },
-  "version": "0.4.3",
+  "version": "0.5.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@kumoproductions/mcp-cinema4d",
-      "version": "0.4.3",
+      "version": "0.5.0",
       "transport": {
         "type": "stdio"
       }
