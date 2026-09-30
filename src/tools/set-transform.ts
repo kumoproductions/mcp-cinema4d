@@ -10,14 +10,11 @@ export const setTransformTool = defineTool({
     "Write an object's transform in local or global space. Pass any combination of `pos`/`rot` (HPB radians)/`scale` to patch individual components — unspecified parts keep their current value. Or pass a full 4x3 `matrix` (rows: offset, v1, v2, v3) to replace the whole transform; matrix is mutually exclusive with the decomposed fields. Space defaults to 'local' (SetMl). Use 'global' (SetMg) to write world coordinates through a parent.",
   inputShape: {
     handle: handleSchema.describe("Target object."),
-    pos: z.tuple([z.number(), z.number(), z.number()]).optional().describe("[x, y, z]."),
-    rot: z
-      .tuple([z.number(), z.number(), z.number()])
-      .optional()
-      .describe("[heading, pitch, bank] in radians."),
-    scale: z.tuple([z.number(), z.number(), z.number()]).optional().describe("[sx, sy, sz]."),
+    pos: z.array(z.number()).length(3).optional().describe("[x, y, z]."),
+    rot: z.array(z.number()).length(3).optional().describe("[heading, pitch, bank] in radians."),
+    scale: z.array(z.number()).length(3).optional().describe("[sx, sy, sz]."),
     matrix: z
-      .array(z.tuple([z.number(), z.number(), z.number()]))
+      .array(z.array(z.number()).length(3))
       .length(4)
       .optional()
       .describe("4x3 matrix as [offset, v1, v2, v3]. Exclusive with pos/rot/scale."),

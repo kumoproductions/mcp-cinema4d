@@ -26,11 +26,13 @@ export const assignMaterialTool = defineTool({
       .optional()
       .describe("Projection alias. Omit to preserve the existing projection."),
     uv_offset: z
-      .tuple([z.number(), z.number()])
+      .array(z.number())
+      .length(2)
       .optional()
       .describe("[u, v] offset applied to TEXTURETAG_OFFSETX/Y."),
     uv_tiles: z
-      .tuple([z.number(), z.number()])
+      .array(z.number())
+      .length(2)
       .optional()
       .describe("[u, v] tile count applied to TEXTURETAG_TILESX/Y."),
     restrict_to_selection: z

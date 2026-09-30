@@ -28,7 +28,8 @@ export const createEntityTool = defineTool({
       .optional()
       .describe("{param_id: value} to set after allocation. Lists of 3 numbers become Vectors."),
     position: z
-      .tuple([z.number(), z.number(), z.number()])
+      .array(z.number())
+      .length(3)
       .optional()
       .describe("Relative position [x,y,z] (objects only)."),
     slots: z
