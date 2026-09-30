@@ -3,6 +3,24 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Tool schemas were rejected by strict MCP clients such as Claude Desktop
+  ([#8](https://github.com/kumoproductions/mcp-cinema4d/issues/8)).** The
+  recursive entity `handle` emitted `$ref: "#/definitions/__schema0"`, which
+  some clients do not resolve, so every handle failed validation
+  (`Invalid input at handle` on `list_tracks` and the like). Fixed-length
+  arrays (`position`, `color`, `pos`/`rot`/`scale`, `[id, dtype]` path
+  segments, …) emitted draft-07 tuple `items: [...]`, which draft-2020-12
+  validators reject with `items must be object,boolean`, dropping ~14 tools
+  (`set_params`, `create_entity`, …) at load. The handle schema is now
+  non-recursive — a shader's `owner` accepts any `{kind, ...}` handle and is
+  validated by the bridge — and tuples are plain arrays with a fixed length.
+  A new unit test fails if any tool schema emits `$ref` or tuple-form `items`
+  again.
+
 ## [0.5.0] - 2026-10-01
 
 ### Added

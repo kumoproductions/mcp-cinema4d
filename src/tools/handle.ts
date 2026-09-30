@@ -27,81 +27,101 @@ import { z } from "zod";
  *       falls back when id is not known. GvNode inherits from BaseList2D,
  *       so `set_params` / `describe` / `get_params` work on it directly.
  */
-export const handleSchema: z.ZodTypeAny = z.lazy(() =>
-  z.union([
-    z
-      .object({
-        kind: z.literal("object"),
-        name: z.string().optional(),
-        path: z.string().optional(),
-      })
-      .refine((v) => Boolean(v.name) || Boolean(v.path), {
-        message: "object handle requires `name` or `path`",
-      }),
-    z.object({ kind: z.literal("render_data"), name: z.string() }),
-    z.object({ kind: z.literal("take"), name: z.string() }),
-    z.object({ kind: z.literal("material"), name: z.string() }),
-    z.object({ kind: z.literal("layer"), name: z.string() }),
-    z
-      .object({
-        kind: z.literal("tag"),
-        object: z.string().optional(),
-        object_path: z.string().optional(),
-        type_id: z.number().int().optional(),
-        tag_name: z.string().optional(),
-      })
-      .refine((v) => Boolean(v.object) || Boolean(v.object_path), {
-        message: "tag handle requires `object` or `object_path`",
-      }),
-    z.object({
-      kind: z.literal("video_post"),
-      render_data: z.string(),
-      type_id: z.number().int(),
-    }),
-    z
-      .object({
-        kind: z.literal("shader"),
-        owner: handleSchema,
-        index: z.number().int().nonnegative().optional(),
-        name: z.string().optional(),
-      })
-      .refine((v) => v.index !== undefined || Boolean(v.name), {
-        message: "shader handle requires `name` or `index`",
-      }),
-    z
-      .object({
-        kind: z.literal("gv_node"),
-        tag: handleSchema,
-        id: z.string().optional(),
-        name: z.string().optional(),
-      })
-      .refine((v) => Boolean(v.id) || Boolean(v.name), {
-        message: "gv_node handle requires `id` or `name`",
-      }),
-    z.object({
-      kind: z.literal("plugin_options"),
-      plugin_id: z.union([z.number().int(), z.string()]),
-      plugin_type: z
-        .enum([
-          "command",
-          "object",
-          "tag",
-          "material",
-          "shader",
-          "video_post",
-          "scene_loader",
-          "scene_saver",
-          "bitmap_loader",
-          "bitmap_saver",
-          "tool",
-          "preference",
-          "node",
-          "sculpt_brush",
-        ])
-        .optional(),
-    }),
-  ]),
-);
+// MCP clients validate tool arguments against the JSON Schema the SDK emits
+// (draft-07). A recursive zod schema (`z.lazy`) turns into
+// `$ref: #/definitions/...`, which some clients fail to resolve — every value
+// then fails validation. So the handle schema must stay non-recursive and
+// self-contained: `gv_node.tag` is typed as a tag handle directly and
+// `shader.owner` is kept loose (see below).
+
+const objectHandle = z
+  .object({
+    kind: z.literal("object"),
+    name: z.string().optional(),
+    path: z.string().optional(),
+  })
+  .refine((v) => Boolean(v.name) || Boolean(v.path), {
+    message: "object handle requires `name` or `path`",
+  });
+
+const tagHandle = z
+  .object({
+    kind: z.literal("tag"),
+    object: z.string().optional(),
+    object_path: z.string().optional(),
+    type_id: z.number().int().optional(),
+    tag_name: z.string().optional(),
+  })
+  .refine((v) => Boolean(v.object) || Boolean(v.object_path), {
+    message: "tag handle requires `object` or `object_path`",
+  });
+
+const leafHandles = [
+  objectHandle,
+  z.object({ kind: z.literal("render_data"), name: z.string() }),
+  z.object({ kind: z.literal("take"), name: z.string() }),
+  z.object({ kind: z.literal("material"), name: z.string() }),
+  z.object({ kind: z.literal("layer"), name: z.string() }),
+  tagHandle,
+  z.object({
+    kind: z.literal("video_post"),
+    render_data: z.string(),
+    type_id: z.number().int(),
+  }),
+  z.object({
+    kind: z.literal("plugin_options"),
+    plugin_id: z.union([z.number().int(), z.string()]),
+    plugin_type: z
+      .enum([
+        "command",
+        "object",
+        "tag",
+        "material",
+        "shader",
+        "video_post",
+        "scene_loader",
+        "scene_saver",
+        "bitmap_loader",
+        "bitmap_saver",
+        "tool",
+        "preference",
+        "node",
+        "sculpt_brush",
+      ])
+      .optional(),
+  }),
+] as const;
+
+const gvNodeHandle = z
+  .object({
+    kind: z.literal("gv_node"),
+    tag: tagHandle,
+    id: z.string().optional(),
+    name: z.string().optional(),
+  })
+  .refine((v) => Boolean(v.id) || Boolean(v.name), {
+    message: "gv_node handle requires `id` or `name`",
+  });
+
+// A shader's owner is itself a handle and may be another shader (Layer /
+// Fusion children), so it is the one place the handle type recurses. Its
+// schema is kept loose — any `{kind, ...}` object — and the bridge resolves
+// and validates it; unrolling the full union per nesting level would multiply
+// the size of every tool schema that takes a handle.
+const shaderHandle = z
+  .object({
+    kind: z.literal("shader"),
+    owner: z
+      .looseObject({ kind: z.string() })
+      .describe("Handle of the shader's owner (material, object, tag, video_post, or shader)."),
+    index: z.number().int().nonnegative().optional(),
+    name: z.string().optional(),
+  })
+  .refine((v) => v.index !== undefined || Boolean(v.name), {
+    message: "shader handle requires `name` or `index`",
+  });
+
+export const handleSchema: z.ZodTypeAny = z.union([...leafHandles, shaderHandle, gvNodeHandle]);
 
 // Each DescID path segment is one of:
 //   - an int id (common case)
@@ -113,7 +133,18 @@ export const handleSchema: z.ZodTypeAny = z.lazy(() =>
 const pathSegment = z.union([
   z.number().int(),
   z.enum(["x", "y", "z"]),
-  z.tuple([z.union([z.number().int(), z.enum(["x", "y", "z"])]), z.string()]),
+  // [id, dtype] pair. Written as a fixed-length array rather than z.tuple:
+  // draft-07 tuples emit `items: [...]`, which clients on newer drafts reject.
+  z
+    .array(z.union([z.number().int(), z.string()]))
+    .length(2)
+    .refine(
+      ([id, dtype]) =>
+        (typeof id === "number" || ["x", "y", "z"].includes(id)) && typeof dtype === "string",
+      {
+        message: "path segment pair must be [id | 'x'|'y'|'z', dtype]",
+      },
+    ),
   z.array(z.number().int()).min(2).max(3),
 ]);
 

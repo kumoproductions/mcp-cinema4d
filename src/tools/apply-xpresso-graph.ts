@@ -62,7 +62,8 @@ export const applyXpressoGraphTool = defineTool({
               "Parent group: omit / 'root' for the master XGroup, another caller id from this call, or an existing path id like '0'.",
             ),
           position: z
-            .tuple([z.number(), z.number()])
+            .array(z.number())
+            .length(2)
             .optional()
             .describe("Position [x, y] in the graph view. Default [-1, -1] (auto)."),
           params: z

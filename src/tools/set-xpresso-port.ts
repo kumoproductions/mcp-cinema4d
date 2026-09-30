@@ -38,7 +38,7 @@ export const setXpressoPortTool = defineTool({
       .optional()
       .describe("Port main id passed to GvNode.AddPort (required for `add`)."),
     value: z
-      .union([z.boolean(), z.number(), z.string(), z.tuple([z.number(), z.number(), z.number()])])
+      .union([z.boolean(), z.number(), z.string(), z.array(z.number()).length(3)])
       .optional()
       .describe("New default value for `set_value`. [x,y,z] is coerced to c4d.Vector."),
   },

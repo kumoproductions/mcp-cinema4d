@@ -20,7 +20,8 @@ export const setLayerFlagsTool = defineTool({
     animation: z.boolean().optional(),
     xref: z.boolean().optional(),
     color: z
-      .tuple([z.number(), z.number(), z.number()])
+      .array(z.number())
+      .length(3)
       .optional()
       .describe("Optional color update as [r,g,b] in 0..1."),
   },

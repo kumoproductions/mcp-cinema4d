@@ -19,7 +19,7 @@ export const setGraphPortTool = defineTool({
     node_id: z.string().describe("The $id assigned to the target node."),
     port: z.string().describe("Port path, e.g. 'Base/Metalness' or 'Image/Custom Gamma'."),
     value: z
-      .union([z.boolean(), z.number(), z.string(), z.tuple([z.number(), z.number(), z.number()])])
+      .union([z.boolean(), z.number(), z.string(), z.array(z.number()).length(3)])
       .describe("New port value. [x,y,z] is passed as maxon.Vector."),
     node_space: z
       .string()
