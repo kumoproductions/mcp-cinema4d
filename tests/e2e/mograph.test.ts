@@ -13,10 +13,10 @@ const client: MCPTestClient | null = probe.client ?? null;
 let mographPresent = false;
 if (ready && client) {
   try {
-    const r = await client.call<{ entities: Array<{ id: number }> }>("list_plugins", {
+    const r = await client.call<{ plugins: Array<{ id: number }> }>("list_plugins", {
       plugin_type: "object",
     });
-    mographPresent = r.entities?.some((e) => e.id === MG_CLONER) ?? false;
+    mographPresent = r.plugins?.some((e) => e.id === MG_CLONER) ?? false;
   } catch {
     mographPresent = false;
   }
