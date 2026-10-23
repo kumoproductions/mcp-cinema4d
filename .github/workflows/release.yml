@@ -19,7 +19,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
       - name: Install uv (for ruff via uvx)
         uses: astral-sh/setup-uv@v6
@@ -75,7 +75,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
           registry-url: https://registry.npmjs.org
 
@@ -203,7 +203,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
           registry-url: https://npm.pkg.github.com
           scope: "@kumoproductions"
